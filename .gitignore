@@ -1,0 +1,12 @@
+# Zig
+zig-cache/
+zig-out/
+.zig-cache/
+
+# Nix
+result
+result-*
+.direnv
+
+# OS
+.DS_Store

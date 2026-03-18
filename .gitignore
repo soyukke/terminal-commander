@@ -8,5 +8,14 @@ result
 result-*
 .direnv
 
+# Node/Bun
+node_modules/
+bun.lock
+dist/
+build/
+
+# Electrobun
+.electrobun/
+
 # OS
 .DS_Store

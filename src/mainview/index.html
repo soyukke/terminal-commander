@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Commander</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div id="app">
+        <div id="toolbar">
+            <div class="toolbar-left">
+                <button id="btn-add" title="New Terminal">+ New</button>
+                <button id="btn-split-h" title="Split Horizontal">| Split H</button>
+                <button id="btn-split-v" title="Split Vertical">- Split V</button>
+            </div>
+            <div class="toolbar-center">
+                <span class="view-switcher">
+                    <button class="view-btn active" data-view="grid">Grid</button>
+                    <button class="view-btn" data-view="list">List</button>
+                    <button class="view-btn" data-view="kanban">Kanban</button>
+                </span>
+            </div>
+            <div class="toolbar-right">
+                <span id="tile-count">0 terminals</span>
+            </div>
+        </div>
+        <div id="terminal-container">
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+    <script src="index.js"></script>
+</body>
+</html>

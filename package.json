@@ -1,0 +1,16 @@
+{
+	"name": "terminal-commander",
+	"version": "0.1.0",
+	"description": "Terminal multiplexer optimized for Claude Code workflows",
+	"scripts": {
+		"start": "electrobun dev",
+		"dev": "electrobun dev --watch",
+		"test": "bun test src/bun/"
+	},
+	"dependencies": {
+		"electrobun": "1.16.0"
+	},
+	"devDependencies": {
+		"@types/bun": "latest"
+	}
+}

@@ -1,0 +1,165 @@
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+:root {
+	--bg-primary: #1a1b26;
+	--bg-secondary: #24283b;
+	--bg-toolbar: #16161e;
+	--border-color: #414868;
+	--text-primary: #c0caf5;
+	--text-secondary: #565f89;
+	--accent: #7aa2f7;
+	--accent-hover: #89b4fa;
+	--tile-border-width: 2px;
+}
+
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	height: 100vh;
+	overflow: hidden;
+}
+
+#app {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+
+/* Toolbar */
+#toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 40px;
+	padding: 0 12px;
+	background: var(--bg-toolbar);
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+}
+
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+#toolbar button {
+	background: var(--bg-secondary);
+	color: var(--text-primary);
+	border: 1px solid var(--border-color);
+	border-radius: 4px;
+	padding: 4px 10px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+#toolbar button:hover {
+	background: var(--accent);
+	color: #fff;
+}
+
+.view-switcher {
+	display: flex;
+	gap: 2px;
+	background: var(--bg-primary);
+	border-radius: 4px;
+	padding: 2px;
+}
+
+.view-btn {
+	border: none !important;
+	border-radius: 3px !important;
+	padding: 3px 12px !important;
+	font-size: 11px !important;
+}
+
+.view-btn.active {
+	background: var(--accent) !important;
+	color: #fff !important;
+}
+
+#tile-count {
+	font-size: 11px;
+	color: var(--text-secondary);
+}
+
+/* Terminal Container */
+#terminal-container {
+	flex: 1;
+	display: flex;
+	flex-wrap: wrap;
+	overflow: hidden;
+}
+
+/* Grid layout */
+#terminal-container.grid-view {
+	display: flex;
+	flex-wrap: wrap;
+}
+
+/* Tile */
+.tile {
+	display: flex;
+	flex-direction: column;
+	border: var(--tile-border-width) solid var(--border-color);
+	overflow: hidden;
+	min-width: 200px;
+	min-height: 100px;
+}
+
+.tile.focused {
+	border-color: var(--accent);
+}
+
+.tile-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 28px;
+	padding: 0 8px;
+	background: var(--bg-secondary);
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+.tile-name {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-primary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.tile-close {
+	font-size: 14px;
+	color: var(--text-secondary);
+	cursor: pointer;
+	border: none;
+	background: none;
+	padding: 0 2px;
+	line-height: 1;
+}
+
+.tile-close:hover {
+	color: #f7768e;
+}
+
+.tile-body {
+	flex: 1;
+	overflow: hidden;
+}
+
+.tile-body .xterm {
+	height: 100%;
+	padding: 4px;
+}

@@ -1,5 +1,5 @@
 {
-  description = "terminal-commander - Zig project";
+  description = "terminal-commander - Electrobun terminal multiplexer";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
@@ -26,6 +26,7 @@
             buildInputs = [
               zig
               pkgs.zls
+              pkgs.bun
             ];
             shellHook = ''
               export ZIG_LOCAL_CACHE_DIR="$PWD/.zig-cache"

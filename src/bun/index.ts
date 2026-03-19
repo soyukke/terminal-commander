@@ -1,5 +1,5 @@
 import { BrowserWindow, BrowserView, Utils } from "electrobun/bun";
-import type { TerminalRPCType } from "../shared/types.ts";
+import { RPC_MAX_REQUEST_TIME, type TerminalRPCType } from "../shared/types.ts";
 import {
 	DEFAULT_CONFIG,
 	parseConfigFile,
@@ -69,6 +69,38 @@ function addRecentDir(dir: string): void {
 
 const titleById = new Map<string, string>();
 const bellDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+const activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const terminalStatus = new Map<string, "running" | "idle">();
+
+const IDLE_THRESHOLD_MS = 3000;
+
+function updateTerminalStatus(id: string, status: "running" | "idle"): void {
+	const prev = terminalStatus.get(id);
+	if (prev === status) return;
+	terminalStatus.set(id, status);
+	mainWindow.webview.rpc.send.terminalStatus({ id, status });
+}
+
+const lastResetTime = new Map<string, number>();
+const RESET_THROTTLE_MS = 100;
+
+function resetIdleTimer(id: string): void {
+	const now = Date.now();
+	const last = lastResetTime.get(id) ?? 0;
+	if (now - last < RESET_THROTTLE_MS && activityTimers.has(id)) return;
+	lastResetTime.set(id, now);
+
+	const existing = activityTimers.get(id);
+	if (existing !== undefined) clearTimeout(existing);
+	activityTimers.set(
+		id,
+		setTimeout(() => {
+			activityTimers.delete(id);
+			lastResetTime.delete(id);
+			updateTerminalStatus(id, "idle");
+		}, IDLE_THRESHOLD_MS),
+	);
+}
 
 function clearBellDebounce(id: string): void {
 	const timer = bellDebounce.get(id);
@@ -78,6 +110,16 @@ function clearBellDebounce(id: string): void {
 	}
 }
 
+function clearActivityTimer(id: string): void {
+	const timer = activityTimers.get(id);
+	if (timer !== undefined) {
+		clearTimeout(timer);
+		activityTimers.delete(id);
+	}
+	terminalStatus.delete(id);
+	lastResetTime.delete(id);
+}
+
 // --- PTY Manager ---
 
 let mainWindow: BrowserWindow;
@@ -85,6 +127,8 @@ let mainWindow: BrowserWindow;
 const ptyManager = new PtyManager({
 	onOutput: (id, data) => {
 		mainWindow.webview.rpc.send.terminalOutput({ id, data });
+		updateTerminalStatus(id, "running");
+		resetIdleTimer(id);
 	},
 	onTitle: (id, title) => {
 		titleById.set(id, title);
@@ -115,13 +159,15 @@ const ptyManager = new PtyManager({
 			silent: true,
 		});
 		titleById.delete(id);
+		clearBellDebounce(id);
+		clearActivityTimer(id);
 	},
 });
 
 // --- RPC ---
 
 const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
-	maxRequestTime: 10000,
+	maxRequestTime: RPC_MAX_REQUEST_TIME,
 	handlers: {
 		requests: {
 			getConfig: () => ({ config }),
@@ -138,6 +184,7 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 			closeTerminal: ({ id }) => {
 				titleById.delete(id);
 				clearBellDebounce(id);
+				clearActivityTimer(id);
 				return { success: ptyManager.close(id) };
 			},
 

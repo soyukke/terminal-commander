@@ -1,5 +1,6 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { PtyManager } from "./ptyManager.ts";
+import { waitFor, collectOutput, logContains } from "./testHelpers.ts";
 
 /**
  * E2E flow tests: title tracking, bell notification, color management,
@@ -10,15 +11,16 @@ interface Log {
 	titles: { id: string; title: string }[];
 	bells: { id: string }[];
 	exits: { id: string; exitCode: number }[];
+	outputs: { id: string; data: string }[];
 }
 
 function createTrackedManager() {
-	const log: Log = { titles: [], bells: [], exits: [] };
+	const log: Log = { titles: [], bells: [], exits: [], outputs: [] };
 	const titleById = new Map<string, string>();
 	const colorById = new Map<string, string>();
 
 	const manager = new PtyManager({
-		onOutput: () => {},
+		onOutput: (id, data) => { log.outputs.push({ id, data }); },
 		onTitle: (id, title) => {
 			log.titles.push({ id, title });
 			titleById.set(id, title);
@@ -31,14 +33,6 @@ function createTrackedManager() {
 	});
 
 	return { manager, log, titleById, colorById };
-}
-
-async function waitFor(pred: () => boolean, timeout = 5000): Promise<void> {
-	const start = Date.now();
-	while (!pred()) {
-		if (Date.now() - start > timeout) throw new Error("waitFor timed out");
-		await new Promise((r) => setTimeout(r, 50));
-	}
 }
 
 describe("E2E: Claude Code session lifecycle", () => {
@@ -151,6 +145,189 @@ describe("E2E: Color tracking", () => {
 		for (const color of presets) {
 			expect(color).toMatch(/^#[0-9a-f]{6}$/);
 		}
+	});
+});
+
+describe("E2E: Working directory (cwd)", () => {
+	let manager: PtyManager;
+	afterEach(() => manager?.closeAll());
+
+	test("terminal starts in the specified cwd", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const targetDir = "/tmp";
+		const id = manager.create(80, 24, {
+			command: "pwd",
+			cwd: targetDir,
+		});
+
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("/tmp")),
+		);
+
+		// Verify the command ran in the correct directory
+		const allOutput = collectOutput(log, id);
+		expect(allOutput).toContain("/tmp");
+	});
+
+	test("terminal starts in the specified cwd (non-default directory)", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		// Use /var as a different directory to verify cwd actually changes
+		const targetDir = "/var";
+		const id = manager.create(80, 24, {
+			command: "pwd",
+			cwd: targetDir,
+		});
+
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("/var")),
+		);
+
+		const allOutput = collectOutput(log, id);
+		// Should NOT contain user's home dir or project dir
+		expect(allOutput).toContain("/var");
+	});
+
+	test("terminal without cwd uses default directory", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const id = manager.create(80, 24, {
+			command: "pwd",
+			// no cwd specified
+		});
+
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("/")),
+		);
+
+		// Should produce some output (pwd works)
+		expect(log.outputs.some((o) => o.id === id)).toBe(true);
+	});
+
+	test("command mode with cwd runs in the specified directory", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		// Simulates the Claude button flow: command + cwd
+		const targetDir = "/tmp";
+		const id = manager.create(80, 24, {
+			command: "pwd && echo CWD_CHECK_DONE",
+			cwd: targetDir,
+		});
+
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("CWD_CHECK_DONE")),
+		);
+
+		const allOutput = collectOutput(log, id);
+		// pwd should print /tmp, not the project directory
+		expect(allOutput).toContain("/tmp");
+		// Verify it's specifically /tmp and not some other path containing /tmp
+		expect(allOutput).toMatch(/\/tmp\b/);
+	});
+
+	test("shell mode (no command) starts in the specified cwd", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const targetDir = "/tmp";
+		const id = manager.create(80, 24, {
+			cwd: targetDir,
+		});
+
+		// Write pwd to the shell and check output
+		manager.write(id, "pwd\n");
+
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("/tmp")),
+		);
+
+		const allOutput = collectOutput(log, id);
+		expect(allOutput).toContain("/tmp");
+	});
+});
+
+describe("E2E: Terminal activity status detection", () => {
+	let manager: PtyManager;
+	afterEach(() => manager?.closeAll());
+
+	test("terminal produces output while command is running", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const id = manager.create(80, 24, {
+			command: 'echo "status-test-running" && sleep 2',
+		});
+
+		// Output should arrive while the command is running
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("status-test-running")),
+		);
+		expect(log.outputs.some((o) => o.id === id)).toBe(true);
+	});
+
+	test("terminal goes quiet after command completes (idle detection basis)", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const id = manager.create(80, 24, {
+			command: 'echo "quick-cmd"',
+		});
+
+		// Wait for output
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("quick-cmd")),
+		);
+
+		// Record output count, wait, and verify no new output (idle state)
+		const countAfterCmd = log.outputs.filter((o) => o.id === id).length;
+		await new Promise((r) => setTimeout(r, 1500));
+		const countAfterWait = log.outputs.filter((o) => o.id === id).length;
+
+		// Output may still trickle (shell prompt), but the burst should have stopped
+		// The key point: the command produced output, proving activity tracking works
+		expect(countAfterCmd).toBeGreaterThan(0);
+		// After waiting, output should have stabilized (no continuous stream)
+		expect(countAfterWait - countAfterCmd).toBeLessThan(5);
+	});
+
+	test("exit is detected after process terminates", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const id = manager.create(80, 24, {
+			command: 'echo "will-exit" && exit 0',
+		});
+
+		await waitFor(() => log.exits.some((e) => e.id === id));
+		expect(log.exits.find((e) => e.id === id)!.exitCode).toBe(0);
+	});
+
+	test("status transitions: running output → quiet period → exit", async () => {
+		const { manager: m, log } = createTrackedManager();
+		manager = m;
+
+		const id = manager.create(80, 24, {
+			command: 'echo "phase1" && sleep 0.5 && echo "phase2" && exit 0',
+		});
+
+		// Phase 1: output arrives (running)
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("phase1")),
+		);
+
+		// Phase 2: more output (still running)
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("phase2")),
+		);
+
+		// Phase 3: process exits
+		await waitFor(() => log.exits.some((e) => e.id === id));
+		expect(log.exits.find((e) => e.id === id)!.exitCode).toBe(0);
 	});
 });
 

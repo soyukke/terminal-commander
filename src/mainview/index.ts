@@ -1,5 +1,5 @@
 import { Electroview } from "electrobun/view";
-import type { TerminalRPCType } from "../shared/types.ts";
+import { RPC_MAX_REQUEST_TIME, type TerminalRPCType, type TerminalStatus } from "../shared/types.ts";
 import { configToTerminalOptions, type AppConfig, DEFAULT_CONFIG } from "../shared/config.ts";
 import {
 	type Tile,
@@ -25,6 +25,7 @@ declare const FitAddon: any;
 // --- RPC ---
 
 const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
+	maxRequestTime: RPC_MAX_REQUEST_TIME,
 	handlers: {
 		requests: {},
 		messages: {
@@ -51,6 +52,13 @@ const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 						`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`
 					);
 					tile.badgeSpan.hidden = false;
+					setTileStatus(tile, "exited");
+				}
+			},
+			terminalStatus: ({ id, status }) => {
+				const tile = getTile(id);
+				if (tile && tile.status !== "exited") {
+					setTileStatus(tile, status);
 				}
 			},
 		},
@@ -106,6 +114,21 @@ function focusTile(id: string): void {
 	}
 }
 
+// --- Tile status ---
+
+const STATUS_LABELS: Record<TerminalStatus, string> = {
+	running: "Running",
+	idle: "Idle",
+	exited: "Exited",
+};
+
+function setTileStatus(tile: Tile, status: TerminalStatus): void {
+	if (tile.status === status) return;
+	tile.status = status;
+	tile.statusSpan.className = `tile-status tile-status--${status}`;
+	tile.statusSpan.title = STATUS_LABELS[status];
+}
+
 // --- Tile color ---
 
 function setTileColor(tile: Tile, color: string): void {
@@ -130,7 +153,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	const command = opts?.command ?? config.command;
 	const defaultColor = config.palette[4] || "#7aa2f7";
 
-	const { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, triggerRename } =
+	const { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, statusSpan, triggerRename } =
 		createTileElement(tileName, {
 			onRename: (tileId, newName) => {
 				const t = getTile(tileId);
@@ -212,20 +235,24 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		recalculateLayout();
 	});
 
-	const tile = {
+	const tile: Tile = {
 		id,
 		name: tileName,
 		color: defaultColor,
+		status: "running",
 		terminal: term,
 		fitAddon,
 		element: tileEl,
 		nameSpan,
 		badgeSpan,
 		colorDot,
+		statusSpan,
 	};
 
 	addTile(tile, insertAfterId);
 	setTileColor(tile, defaultColor);
+	statusSpan.className = `tile-status tile-status--running`;
+	statusSpan.title = STATUS_LABELS["running"];
 	focusTile(id);
 	updateTileCount();
 	recalculateLayout();

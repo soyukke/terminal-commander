@@ -13,6 +13,7 @@ export function createTileElement(
 	nameSpan: HTMLElement;
 	badgeSpan: HTMLElement;
 	colorDot: HTMLElement;
+	statusSpan: HTMLElement;
 	triggerRename: () => void;
 } {
 	const tileEl = document.createElement("div");
@@ -73,6 +74,9 @@ export function createTileElement(
 		}
 	});
 
+	const statusSpan = document.createElement("span");
+	statusSpan.className = "tile-status";
+
 	const badgeSpan = document.createElement("span");
 	badgeSpan.className = "tile-badge";
 	badgeSpan.textContent = "\u25cf"; // ●
@@ -84,6 +88,7 @@ export function createTileElement(
 
 	header.appendChild(colorDot);
 	header.appendChild(nameSpan);
+	header.appendChild(statusSpan);
 	header.appendChild(badgeSpan);
 	header.appendChild(closeBtn);
 
@@ -93,5 +98,5 @@ export function createTileElement(
 	tileEl.appendChild(header);
 	tileEl.appendChild(body);
 
-	return { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, triggerRename };
+	return { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, statusSpan, triggerRename };
 }

@@ -28,7 +28,7 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 		const overlay = document.createElement("div");
 		overlay.className = "dir-picker-overlay";
 		overlay.addEventListener("mousedown", (e) => {
-			if (e.target === overlay) finish(null);
+			if (e.target === overlay && !browsing) finish(null);
 		});
 
 		// Modal
@@ -86,12 +86,20 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 		modal.appendChild(sep);
 
 		// Browse button
+		let browsing = false;
 		const browseBtn = document.createElement("button");
 		browseBtn.className = "dir-picker-browse";
 		browseBtn.textContent = "Browse...";
 		browseBtn.addEventListener("click", async () => {
-			const { path } = await rpc.request.browseDirectory({});
-			if (path) finish(path);
+			browsing = true;
+			try {
+				const { path } = await rpc.request.browseDirectory({});
+				if (path) finish(path);
+			} catch {
+				// RPC timeout or error — user can retry or cancel
+			} finally {
+				browsing = false;
+			}
 		});
 		modal.appendChild(browseBtn);
 
@@ -99,7 +107,9 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 		const cancelBtn = document.createElement("button");
 		cancelBtn.className = "dir-picker-cancel";
 		cancelBtn.textContent = "Cancel";
-		cancelBtn.addEventListener("click", () => finish(null));
+		cancelBtn.addEventListener("click", () => {
+			if (!browsing) finish(null);
+		});
 		modal.appendChild(cancelBtn);
 
 		overlay.appendChild(modal);
@@ -107,7 +117,7 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 
 		// Keyboard handling
 		onKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") finish(null);
+			if (e.key === "Escape" && !browsing) finish(null);
 		};
 		document.addEventListener("keydown", onKeyDown);
 	});

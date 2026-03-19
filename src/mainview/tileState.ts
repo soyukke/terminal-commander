@@ -1,13 +1,17 @@
+import type { TerminalStatus } from "../shared/types.ts";
+
 export interface Tile {
 	id: string;
 	name: string;
 	color: string;
+	status: TerminalStatus;
 	terminal: any;
 	fitAddon: any;
 	element: HTMLElement;
 	nameSpan: HTMLElement;
 	badgeSpan: HTMLElement;
 	colorDot: HTMLElement;
+	statusSpan: HTMLElement;
 }
 
 const tilesById = new Map<string, Tile>();

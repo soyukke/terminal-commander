@@ -1,6 +1,12 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { AppConfig } from "./config.ts";
 
+export type TerminalRPCStatus = "running" | "idle";
+export type TerminalStatus = TerminalRPCStatus | "exited";
+
+/** browseDirectory opens a native dialog — needs a long timeout */
+export const RPC_MAX_REQUEST_TIME = 300_000;
+
 export type TerminalRPCType = {
 	bun: RPCSchema<{
 		requests: {
@@ -41,6 +47,7 @@ export type TerminalRPCType = {
 			terminalTitle: { id: string; title: string };
 			terminalBell: { id: string };
 			terminalExit: { id: string; exitCode: number };
+			terminalStatus: { id: string; status: TerminalRPCStatus };
 		};
 	}>;
 };

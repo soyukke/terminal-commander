@@ -1,7 +1,8 @@
 import { Electroview } from "electrobun/view";
 import type { TerminalRPCType } from "../shared/types.ts";
-import { configToTerminalOptions, type AppConfig } from "../shared/config.ts";
+import { configToTerminalOptions, type AppConfig, DEFAULT_CONFIG } from "../shared/config.ts";
 import {
+	type Tile,
 	getTileCount,
 	getTile,
 	addTile,
@@ -14,8 +15,8 @@ import {
 } from "./tileState.ts";
 import { recalculateLayout, getContainer, setupResizeHandler } from "./layout.ts";
 import { getSplitInsertIndex } from "../shared/gridCalc.ts";
-import { DEFAULT_CONFIG } from "../shared/config.ts";
 import { createTileElement } from "./tileDOM.ts";
+import { showTileContextMenu } from "./contextMenu.ts";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -100,9 +101,16 @@ function focusTile(id: string): void {
 	if (tile) {
 		tile.element.classList.add("focused");
 		tile.terminal.focus();
-		// Clear badge on focus
 		tile.badgeSpan.hidden = true;
 	}
+}
+
+// --- Tile color ---
+
+function setTileColor(tile: Tile, color: string): void {
+	tile.color = color;
+	tile.colorDot.style.backgroundColor = color;
+	tile.element.style.setProperty("--tile-color", color);
 }
 
 // --- Create tile ---
@@ -118,14 +126,23 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	const container = getContainer();
 	const tileName = opts?.name || nextTileName();
 	const command = opts?.command ?? config.command;
+	const defaultColor = config.palette[4] || "#7aa2f7";
 
-	const { tileEl, body, closeBtn, nameSpan, badgeSpan } = createTileElement(
-		tileName,
-		(tileId, newName) => {
-			const t = getTile(tileId);
-			if (t) t.name = newName;
-		},
-	);
+	const { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, triggerRename } =
+		createTileElement(tileName, {
+			onRename: (tileId, newName) => {
+				const t = getTile(tileId);
+				if (t) t.name = newName;
+			},
+			onContextMenu: (x, y, tileId) => {
+				const t = getTile(tileId);
+				if (!t) return;
+				showTileContextMenu(x, y, t.color, config.palette, {
+					onRename: triggerRename,
+					onColorChange: (color) => setTileColor(t, color),
+				});
+			},
+		});
 
 	// Determine insertion position
 	const focusedId = getFocusedTileId();
@@ -192,20 +209,20 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		recalculateLayout();
 	});
 
-	addTile(
-		{
-			id,
-			name: tileName,
-			color: config.palette[4] || "#7aa2f7",
-			terminal: term,
-			fitAddon,
-			element: tileEl,
-			nameSpan,
-			badgeSpan,
-		},
-		insertAfterId,
-	);
+	const tile = {
+		id,
+		name: tileName,
+		color: defaultColor,
+		terminal: term,
+		fitAddon,
+		element: tileEl,
+		nameSpan,
+		badgeSpan,
+		colorDot,
+	};
 
+	addTile(tile, insertAfterId);
+	setTileColor(tile, defaultColor);
 	focusTile(id);
 	updateTileCount();
 	recalculateLayout();

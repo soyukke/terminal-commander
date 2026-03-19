@@ -7,6 +7,7 @@ export interface Tile {
 	element: HTMLElement;
 	nameSpan: HTMLElement;
 	badgeSpan: HTMLElement;
+	colorDot: HTMLElement;
 }
 
 const tilesById = new Map<string, Tile>();

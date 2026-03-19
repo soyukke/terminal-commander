@@ -1,12 +1,19 @@
+export interface TileCallbacks {
+	onRename?: (tileId: string, newName: string) => void;
+	onContextMenu?: (x: number, y: number, tileId: string) => void;
+}
+
 export function createTileElement(
 	tileName: string,
-	onRename?: (tileId: string, newName: string) => void
+	callbacks?: TileCallbacks,
 ): {
 	tileEl: HTMLElement;
 	body: HTMLElement;
 	closeBtn: HTMLElement;
 	nameSpan: HTMLElement;
 	badgeSpan: HTMLElement;
+	colorDot: HTMLElement;
+	triggerRename: () => void;
 } {
 	const tileEl = document.createElement("div");
 	tileEl.className = "tile";
@@ -14,11 +21,19 @@ export function createTileElement(
 	const header = document.createElement("div");
 	header.className = "tile-header";
 
+	// Color indicator dot
+	const colorDot = document.createElement("span");
+	colorDot.className = "tile-header-color";
+
 	const nameSpan = document.createElement("span");
 	nameSpan.className = "tile-name";
 	nameSpan.textContent = tileName;
 
 	nameSpan.addEventListener("dblclick", () => {
+		triggerRename();
+	});
+
+	function triggerRename() {
 		const input = document.createElement("input");
 		input.type = "text";
 		input.value = nameSpan.textContent || "";
@@ -33,7 +48,7 @@ export function createTileElement(
 			if (newName) {
 				nameSpan.textContent = newName;
 				const tileId = tileEl.dataset.tileId;
-				if (tileId && onRename) onRename(tileId, newName);
+				if (tileId && callbacks?.onRename) callbacks.onRename(tileId, newName);
 			}
 			input.replaceWith(nameSpan);
 		};
@@ -47,6 +62,15 @@ export function createTileElement(
 		nameSpan.replaceWith(input);
 		input.focus();
 		input.select();
+	}
+
+	// Right-click context menu
+	header.addEventListener("contextmenu", (e) => {
+		e.preventDefault();
+		const tileId = tileEl.dataset.tileId;
+		if (tileId && callbacks?.onContextMenu) {
+			callbacks.onContextMenu(e.clientX, e.clientY, tileId);
+		}
 	});
 
 	const badgeSpan = document.createElement("span");
@@ -58,6 +82,7 @@ export function createTileElement(
 	closeBtn.className = "tile-close";
 	closeBtn.textContent = "\u00d7";
 
+	header.appendChild(colorDot);
 	header.appendChild(nameSpan);
 	header.appendChild(badgeSpan);
 	header.appendChild(closeBtn);
@@ -68,5 +93,5 @@ export function createTileElement(
 	tileEl.appendChild(header);
 	tileEl.appendChild(body);
 
-	return { tileEl, body, closeBtn, nameSpan, badgeSpan };
+	return { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, triggerRename };
 }

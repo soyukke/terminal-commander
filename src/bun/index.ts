@@ -1,4 +1,4 @@
-import { BrowserWindow, BrowserView } from "electrobun/bun";
+import { BrowserWindow, BrowserView, Utils } from "electrobun/bun";
 import type { TerminalRPCType } from "../shared/types.ts";
 import {
 	DEFAULT_CONFIG,
@@ -36,6 +36,19 @@ function loadConfig(): AppConfig {
 
 const config = loadConfig();
 
+// --- Title tracking + bell debounce ---
+
+const titleById = new Map<string, string>();
+const bellDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearBellDebounce(id: string): void {
+	const timer = bellDebounce.get(id);
+	if (timer !== undefined) {
+		clearTimeout(timer);
+		bellDebounce.delete(id);
+	}
+}
+
 // --- PTY Manager ---
 
 let mainWindow: BrowserWindow;
@@ -44,8 +57,35 @@ const ptyManager = new PtyManager({
 	onOutput: (id, data) => {
 		mainWindow.webview.rpc.send.terminalOutput({ id, data });
 	},
+	onTitle: (id, title) => {
+		titleById.set(id, title);
+		mainWindow.webview.rpc.send.terminalTitle({ id, title });
+	},
+	onBell: (id) => {
+		mainWindow.webview.rpc.send.terminalBell({ id });
+
+		// Debounce notifications (500ms)
+		clearBellDebounce(id);
+		bellDebounce.set(
+			id,
+			setTimeout(() => {
+				bellDebounce.delete(id);
+				Utils.showNotification({
+					title: titleById.get(id) || "Terminal",
+					body: "Task completed",
+					silent: false,
+				});
+			}, 500),
+		);
+	},
 	onExit: (id, exitCode) => {
 		mainWindow.webview.rpc.send.terminalExit({ id, exitCode });
+		Utils.showNotification({
+			title: titleById.get(id) || "Terminal",
+			body: `Process exited with code ${exitCode}`,
+			silent: true,
+		});
+		titleById.delete(id);
 	},
 });
 
@@ -66,9 +106,11 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 				return { id };
 			},
 
-			closeTerminal: ({ id }) => ({
-				success: ptyManager.close(id),
-			}),
+			closeTerminal: ({ id }) => {
+				titleById.delete(id);
+				clearBellDebounce(id);
+				return { success: ptyManager.close(id) };
+			},
 		},
 		messages: {
 			writeToTerminal: ({ id, data }) => {

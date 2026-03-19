@@ -1,8 +1,19 @@
+import { parsePtyOutput } from "./ptyParser.ts";
+
 type OnOutput = (id: string, data: string) => void;
 type OnExit = (id: string, exitCode: number) => void;
+type OnTitle = (id: string, title: string) => void;
+type OnBell = (id: string) => void;
 
 interface PtySession {
 	proc: ReturnType<typeof Bun.spawn>;
+}
+
+interface PtyManagerOpts {
+	onOutput: OnOutput;
+	onExit: OnExit;
+	onTitle?: OnTitle;
+	onBell?: OnBell;
 }
 
 const decoder = new TextDecoder();
@@ -12,10 +23,14 @@ export class PtyManager {
 	private nextId = 0;
 	private onOutput: OnOutput;
 	private onExit: OnExit;
+	private onTitle?: OnTitle;
+	private onBell?: OnBell;
 
-	constructor(opts: { onOutput: OnOutput; onExit: OnExit }) {
+	constructor(opts: PtyManagerOpts) {
 		this.onOutput = opts.onOutput;
 		this.onExit = opts.onExit;
+		this.onTitle = opts.onTitle;
+		this.onBell = opts.onBell;
 	}
 
 	create(
@@ -38,6 +53,15 @@ export class PtyManager {
 				data: (_term, data) => {
 					const text =
 						typeof data === "string" ? data : decoder.decode(data);
+
+					const parsed = parsePtyOutput(text);
+					if (parsed.title !== undefined && this.onTitle) {
+						this.onTitle(id, parsed.title);
+					}
+					if (parsed.hasBell && this.onBell) {
+						this.onBell(id);
+					}
+
 					this.onOutput(id, text);
 				},
 			},
@@ -51,15 +75,18 @@ export class PtyManager {
 
 		proc.exited
 			.then((exitCode) => {
-				// Only fire onExit if session still exists (not already closed)
+				// Skip if already removed by close()
 				if (this.sessions.has(id)) {
 					this.sessions.delete(id);
 					this.onExit(id, exitCode ?? 0);
 				}
 			})
 			.catch(() => {
-				// Process was killed or errored; clean up silently
-				this.sessions.delete(id);
+				// Process crashed or was killed — still notify so callers can clean up
+				if (this.sessions.has(id)) {
+					this.sessions.delete(id);
+					this.onExit(id, -1);
+				}
 			});
 
 		this.sessions.set(id, { proc });

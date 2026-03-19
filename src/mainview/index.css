@@ -140,6 +140,19 @@ body {
 	white-space: nowrap;
 }
 
+.tile-badge {
+	font-size: 10px;
+	color: #ff9e64;
+	margin-left: auto;
+	margin-right: 6px;
+	animation: badge-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}
+
 .tile-close {
 	font-size: 14px;
 	color: var(--text-secondary);

@@ -1,4 +1,9 @@
-import { getTileCount, allTiles } from "./tileState.ts";
+import { getTileCount, allTiles, getTileOrder, getTile } from "./tileState.ts";
+import { bestGrid } from "../shared/gridCalc.ts";
+import { DEFAULT_CONFIG } from "../shared/config.ts";
+
+const FALLBACK_W = DEFAULT_CONFIG["window-width"];
+const FALLBACK_H = DEFAULT_CONFIG["window-height"];
 
 let _container: HTMLElement | null = null;
 
@@ -34,12 +39,19 @@ export function recalculateLayout(): void {
 		return;
 	}
 
-	const cols = Math.ceil(Math.sqrt(count));
-	const rows = Math.ceil(count / cols);
+	const { cols, rows } = bestGrid(count, el.clientWidth || FALLBACK_W, el.clientHeight || FALLBACK_H);
 
 	el.style.display = "grid";
 	el.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
 	el.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+	// Reorder DOM elements to match tileOrder
+	for (const id of getTileOrder()) {
+		const tile = getTile(id);
+		if (tile?.element.parentElement === el) {
+			el.appendChild(tile.element);
+		}
+	}
 
 	fitAllTiles();
 }

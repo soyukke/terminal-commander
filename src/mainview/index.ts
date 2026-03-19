@@ -10,8 +10,11 @@ import {
 	setFocusedTileId,
 	nextTileName,
 	getFirstTileId,
+	getTileOrder,
 } from "./tileState.ts";
 import { recalculateLayout, getContainer, setupResizeHandler } from "./layout.ts";
+import { getSplitInsertIndex } from "../shared/gridCalc.ts";
+import { DEFAULT_CONFIG } from "../shared/config.ts";
 import { createTileElement } from "./tileDOM.ts";
 
 declare const Terminal: any;
@@ -26,10 +29,27 @@ const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 			terminalOutput: ({ id, data }) => {
 				getTile(id)?.terminal.write(data);
 			},
+			terminalTitle: ({ id, title }) => {
+				const tile = getTile(id);
+				if (tile) {
+					tile.name = title;
+					tile.nameSpan.textContent = title;
+				}
+			},
+			terminalBell: ({ id }) => {
+				const tile = getTile(id);
+				if (tile) {
+					tile.badgeSpan.hidden = false;
+				}
+			},
 			terminalExit: ({ id, exitCode }) => {
-				getTile(id)?.terminal.writeln(
-					`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`
-				);
+				const tile = getTile(id);
+				if (tile) {
+					tile.terminal.writeln(
+						`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`
+					);
+					tile.badgeSpan.hidden = false;
+				}
 			},
 		},
 	},
@@ -51,7 +71,6 @@ async function loadConfig() {
 		terminal: configToTerminalOptions(config),
 	};
 
-	// Apply config-driven CSS variables
 	document.documentElement.style.setProperty("--bg-primary", config.background);
 	document.documentElement.style.setProperty("--text-primary", config.foreground);
 
@@ -81,21 +100,51 @@ function focusTile(id: string): void {
 	if (tile) {
 		tile.element.classList.add("focused");
 		tile.terminal.focus();
+		// Clear badge on focus
+		tile.badgeSpan.hidden = true;
 	}
 }
 
 // --- Create tile ---
 
-async function createTile(opts?: { name?: string; command?: string }): Promise<void> {
+interface CreateTileOpts {
+	name?: string;
+	command?: string;
+	splitDirection?: "horizontal" | "vertical";
+}
+
+async function createTile(opts?: CreateTileOpts): Promise<void> {
 	const { app: config, terminal: termOpts } = await loadConfig();
 	const container = getContainer();
 	const tileName = opts?.name || nextTileName();
 	const command = opts?.command ?? config.command;
 
-	const { tileEl, body, closeBtn } = createTileElement(tileName, (tileId, newName) => {
-		const t = getTile(tileId);
-		if (t) t.name = newName;
-	});
+	const { tileEl, body, closeBtn, nameSpan, badgeSpan } = createTileElement(
+		tileName,
+		(tileId, newName) => {
+			const t = getTile(tileId);
+			if (t) t.name = newName;
+		},
+	);
+
+	// Determine insertion position
+	const focusedId = getFocusedTileId();
+	let insertAfterId: string | undefined;
+
+	if (focusedId && opts?.splitDirection) {
+		const order = getTileOrder();
+		const insertIdx = getSplitInsertIndex(
+			focusedId,
+			opts.splitDirection,
+			order,
+			container.clientWidth || DEFAULT_CONFIG["window-width"],
+			container.clientHeight || DEFAULT_CONFIG["window-height"],
+		);
+		insertAfterId = order[insertIdx];
+	} else if (focusedId) {
+		insertAfterId = focusedId;
+	}
+
 	container.appendChild(tileEl);
 
 	// xterm.js with config-driven options
@@ -143,14 +192,19 @@ async function createTile(opts?: { name?: string; command?: string }): Promise<v
 		recalculateLayout();
 	});
 
-	addTile({
-		id,
-		name: tileName,
-		color: config.palette[4] || "#7aa2f7",
-		terminal: term,
-		fitAddon,
-		element: tileEl,
-	});
+	addTile(
+		{
+			id,
+			name: tileName,
+			color: config.palette[4] || "#7aa2f7",
+			terminal: term,
+			fitAddon,
+			element: tileEl,
+			nameSpan,
+			badgeSpan,
+		},
+		insertAfterId,
+	);
 
 	focusTile(id);
 	updateTileCount();
@@ -160,8 +214,12 @@ async function createTile(opts?: { name?: string; command?: string }): Promise<v
 // --- Toolbar ---
 
 document.getElementById("btn-add")?.addEventListener("click", () => createTile());
-document.getElementById("btn-split-h")?.addEventListener("click", () => createTile());
-document.getElementById("btn-split-v")?.addEventListener("click", () => createTile());
+document.getElementById("btn-split-h")?.addEventListener("click", () =>
+	createTile({ splitDirection: "horizontal" })
+);
+document.getElementById("btn-split-v")?.addEventListener("click", () =>
+	createTile({ splitDirection: "vertical" })
+);
 document.getElementById("btn-shell")?.addEventListener("click", () =>
 	createTile({ name: "Shell", command: undefined })
 );

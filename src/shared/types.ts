@@ -26,6 +26,8 @@ export type TerminalRPCType = {
 		requests: {};
 		messages: {
 			terminalOutput: { id: string; data: string };
+			terminalTitle: { id: string; title: string };
+			terminalBell: { id: string };
 			terminalExit: { id: string; exitCode: number };
 		};
 	}>;

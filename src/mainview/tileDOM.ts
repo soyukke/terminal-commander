@@ -5,6 +5,8 @@ export function createTileElement(
 	tileEl: HTMLElement;
 	body: HTMLElement;
 	closeBtn: HTMLElement;
+	nameSpan: HTMLElement;
+	badgeSpan: HTMLElement;
 } {
 	const tileEl = document.createElement("div");
 	tileEl.className = "tile";
@@ -47,11 +49,17 @@ export function createTileElement(
 		input.select();
 	});
 
+	const badgeSpan = document.createElement("span");
+	badgeSpan.className = "tile-badge";
+	badgeSpan.textContent = "\u25cf"; // ●
+	badgeSpan.hidden = true;
+
 	const closeBtn = document.createElement("span");
 	closeBtn.className = "tile-close";
 	closeBtn.textContent = "\u00d7";
 
 	header.appendChild(nameSpan);
+	header.appendChild(badgeSpan);
 	header.appendChild(closeBtn);
 
 	const body = document.createElement("div");
@@ -60,5 +68,5 @@ export function createTileElement(
 	tileEl.appendChild(header);
 	tileEl.appendChild(body);
 
-	return { tileEl, body, closeBtn };
+	return { tileEl, body, closeBtn, nameSpan, badgeSpan };
 }

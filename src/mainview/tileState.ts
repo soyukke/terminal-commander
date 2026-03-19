@@ -5,30 +5,50 @@ export interface Tile {
 	terminal: any;
 	fitAddon: any;
 	element: HTMLElement;
+	nameSpan: HTMLElement;
+	badgeSpan: HTMLElement;
 }
 
-const tiles = new Map<string, Tile>();
+const tilesById = new Map<string, Tile>();
+const tileOrder: string[] = [];
 let focusedTileId: string | null = null;
 let tileCounter = 0;
 
 export function getTileCount(): number {
-	return tiles.size;
+	return tilesById.size;
 }
 
-export function allTiles(): IterableIterator<Tile> {
-	return tiles.values();
+export function allTiles(): Tile[] {
+	return tileOrder.flatMap((id) => {
+		const tile = tilesById.get(id);
+		return tile ? [tile] : [];
+	});
 }
 
 export function getTile(id: string): Tile | undefined {
-	return tiles.get(id);
+	return tilesById.get(id);
 }
 
-export function addTile(tile: Tile): void {
-	tiles.set(tile.id, tile);
+export function getTileOrder(): readonly string[] {
+	return tileOrder;
+}
+
+export function addTile(tile: Tile, afterId?: string): void {
+	tilesById.set(tile.id, tile);
+	if (afterId) {
+		const idx = tileOrder.indexOf(afterId);
+		if (idx !== -1) {
+			tileOrder.splice(idx + 1, 0, tile.id);
+			return;
+		}
+	}
+	tileOrder.push(tile.id);
 }
 
 export function removeTile(id: string): void {
-	tiles.delete(id);
+	tilesById.delete(id);
+	const idx = tileOrder.indexOf(id);
+	if (idx !== -1) tileOrder.splice(idx, 1);
 }
 
 export function getFocusedTileId(): string | null {
@@ -45,6 +65,5 @@ export function nextTileName(): string {
 }
 
 export function getFirstTileId(): string | null {
-	const first = tiles.keys().next();
-	return first.done ? null : first.value;
+	return tileOrder.length > 0 ? tileOrder[0] : null;
 }

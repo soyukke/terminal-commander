@@ -18,13 +18,20 @@ export class PtyManager {
 		this.onExit = opts.onExit;
 	}
 
-	create(cols: number, rows: number): string {
+	create(
+		cols: number,
+		rows: number,
+		opts?: { command?: string; cwd?: string; env?: Record<string, string> }
+	): string {
 		const id = `term-${this.nextId++}`;
 		const shell =
 			process.env.SHELL ||
 			(process.platform === "win32" ? "cmd.exe" : "/bin/bash");
 
-		const proc = Bun.spawn([shell], {
+		const args = opts?.command ? [shell, "-c", opts.command] : [shell];
+
+		const proc = Bun.spawn(args, {
+			cwd: opts?.cwd || undefined,
 			terminal: {
 				cols,
 				rows,
@@ -36,6 +43,7 @@ export class PtyManager {
 			},
 			env: {
 				...process.env,
+				...opts?.env,
 				TERM: "xterm-256color",
 				COLORTERM: "truecolor",
 			},

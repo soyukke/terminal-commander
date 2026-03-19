@@ -1,10 +1,15 @@
 import type { RPCSchema } from "electrobun/bun";
+import type { AppConfig } from "./config.ts";
 
 export type TerminalRPCType = {
 	bun: RPCSchema<{
 		requests: {
+			getConfig: {
+				params: {};
+				response: { config: AppConfig };
+			};
 			createTerminal: {
-				params: { cols: number; rows: number };
+				params: { cols: number; rows: number; command?: string; cwd?: string };
 				response: { id: string };
 			};
 			closeTerminal: {

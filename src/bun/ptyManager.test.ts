@@ -71,4 +71,16 @@ describe("PtyManager", () => {
 		manager.write(id, "exit 0\n");
 		await waitFor(() => log.exits.some((e) => e.id === id));
 	});
+
+	test("create with command runs the specified command", async () => {
+		const id = manager.create(80, 24, { command: "echo cmd-test-marker" });
+		await waitFor(() =>
+			log.outputs.some((o) => o.id === id && o.data.includes("cmd-test-marker"))
+		);
+	});
+
+	test("create with command exits after command completes", async () => {
+		const id = manager.create(80, 24, { command: "echo done" });
+		await waitFor(() => log.exits.some((e) => e.id === id));
+	});
 });

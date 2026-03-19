@@ -5,7 +5,8 @@
 	"scripts": {
 		"start": "electrobun dev",
 		"dev": "electrobun dev --watch",
-		"test": "bun test src/bun/"
+		"test": "bun test src/",
+		"test:smoke": "bash scripts/smoke-test.sh"
 	},
 	"dependencies": {
 		"electrobun": "1.16.0"

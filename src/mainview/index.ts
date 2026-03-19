@@ -1,6 +1,6 @@
 import { Electroview } from "electrobun/view";
 import type { TerminalRPCType } from "../shared/types.ts";
-import { TERMINAL_OPTIONS, DEFAULT_TILE_COLOR } from "./theme.ts";
+import { configToTerminalOptions, type AppConfig } from "../shared/config.ts";
 import {
 	getTileCount,
 	getTile,
@@ -38,6 +38,26 @@ const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 const electroview = new Electroview({ rpc: rpcHandler });
 const rpc = electroview.rpc;
 
+// --- Config (loaded from Bun process) ---
+
+let cachedConfig: { app: AppConfig; terminal: ReturnType<typeof configToTerminalOptions> } | null = null;
+
+async function loadConfig() {
+	if (cachedConfig) return cachedConfig;
+	const { config } = await rpc.request.getConfig({});
+
+	cachedConfig = {
+		app: config,
+		terminal: configToTerminalOptions(config),
+	};
+
+	// Apply config-driven CSS variables
+	document.documentElement.style.setProperty("--bg-primary", config.background);
+	document.documentElement.style.setProperty("--text-primary", config.foreground);
+
+	return cachedConfig;
+}
+
 // --- Tile count display ---
 
 function updateTileCount(): void {
@@ -66,9 +86,11 @@ function focusTile(id: string): void {
 
 // --- Create tile ---
 
-async function createTile(name?: string): Promise<void> {
+async function createTile(opts?: { name?: string; command?: string }): Promise<void> {
+	const { app: config, terminal: termOpts } = await loadConfig();
 	const container = getContainer();
-	const tileName = name || nextTileName();
+	const tileName = opts?.name || nextTileName();
+	const command = opts?.command ?? config.command;
 
 	const { tileEl, body, closeBtn } = createTileElement(tileName, (tileId, newName) => {
 		const t = getTile(tileId);
@@ -76,8 +98,8 @@ async function createTile(name?: string): Promise<void> {
 	});
 	container.appendChild(tileEl);
 
-	// xterm.js
-	const term = new Terminal(TERMINAL_OPTIONS);
+	// xterm.js with config-driven options
+	const term = new Terminal(termOpts);
 	const fitAddon = new FitAddon.FitAddon();
 	term.loadAddon(fitAddon);
 	term.open(body);
@@ -87,6 +109,7 @@ async function createTile(name?: string): Promise<void> {
 	const { id } = await rpc.request.createTerminal({
 		cols: term.cols,
 		rows: term.rows,
+		command,
 	});
 
 	tileEl.dataset.tileId = id;
@@ -123,7 +146,7 @@ async function createTile(name?: string): Promise<void> {
 	addTile({
 		id,
 		name: tileName,
-		color: DEFAULT_TILE_COLOR,
+		color: config.palette[4] || "#7aa2f7",
 		terminal: term,
 		fitAddon,
 		element: tileEl,
@@ -139,6 +162,9 @@ async function createTile(name?: string): Promise<void> {
 document.getElementById("btn-add")?.addEventListener("click", () => createTile());
 document.getElementById("btn-split-h")?.addEventListener("click", () => createTile());
 document.getElementById("btn-split-v")?.addEventListener("click", () => createTile());
+document.getElementById("btn-shell")?.addEventListener("click", () =>
+	createTile({ name: "Shell", command: undefined })
+);
 
 document.querySelectorAll(".view-btn").forEach((btn) => {
 	btn.addEventListener("click", () => {

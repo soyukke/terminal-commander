@@ -9,7 +9,7 @@ import {
 import { PtyManager } from "./ptyManager.ts";
 import { join } from "path";
 import { homedir } from "os";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
 
 // --- Load config ---
 
@@ -35,6 +35,35 @@ function loadConfig(): AppConfig {
 }
 
 const config = loadConfig();
+
+// --- Recent directories ---
+
+const RECENT_DIRS_PATH = join(homedir(), ".config", "terminal-commander", "recent-dirs.json");
+const MAX_RECENT_DIRS = 10;
+
+function loadRecentDirs(): string[] {
+	try {
+		const content = readFileSync(RECENT_DIRS_PATH, "utf-8");
+		const dirs = JSON.parse(content);
+		return Array.isArray(dirs) ? dirs.slice(0, MAX_RECENT_DIRS) : [];
+	} catch {
+		return [];
+	}
+}
+
+function saveRecentDirs(dirs: string[]): void {
+	const configDir = join(homedir(), ".config", "terminal-commander");
+	try {
+		mkdirSync(configDir, { recursive: true });
+	} catch { /* already exists */ }
+	writeFileSync(RECENT_DIRS_PATH, JSON.stringify(dirs, null, 2));
+}
+
+function addRecentDir(dir: string): void {
+	const dirs = loadRecentDirs().filter((d) => d !== dir);
+	dirs.unshift(dir);
+	saveRecentDirs(dirs.slice(0, MAX_RECENT_DIRS));
+}
 
 // --- Title tracking + bell debounce ---
 
@@ -110,6 +139,26 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 				titleById.delete(id);
 				clearBellDebounce(id);
 				return { success: ptyManager.close(id) };
+			},
+
+			browseDirectory: async ({ startingFolder }) => {
+				const results = await Utils.openFileDialog({
+					startingFolder: startingFolder || homedir(),
+					canChooseFiles: false,
+					canChooseDirectory: true,
+					allowsMultipleSelection: false,
+				});
+				const path = results.length > 0 ? results[0] : null;
+				return { path };
+			},
+
+			getRecentDirs: () => {
+				return { dirs: loadRecentDirs() };
+			},
+
+			saveRecentDir: ({ dir }) => {
+				addRecentDir(dir);
+				return { success: true };
 			},
 		},
 		messages: {

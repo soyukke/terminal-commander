@@ -246,3 +246,127 @@ body {
 .context-menu-swatch.active {
 	border-color: var(--text-primary);
 }
+
+/* Directory Picker Modal */
+.dir-picker-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 2000;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.dir-picker-modal {
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-color);
+	border-radius: 8px;
+	padding: 16px;
+	min-width: 400px;
+	max-width: 500px;
+	max-height: 70vh;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.dir-picker-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-primary);
+	margin-bottom: 12px;
+}
+
+.dir-picker-label {
+	font-size: 10px;
+	color: var(--text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 6px;
+}
+
+.dir-picker-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.dir-picker-item {
+	display: flex;
+	flex-direction: column;
+	padding: 8px 10px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.dir-picker-item:hover {
+	background: var(--accent);
+}
+
+.dir-picker-item:hover .dir-picker-item-name,
+.dir-picker-item:hover .dir-picker-item-path {
+	color: #fff;
+}
+
+.dir-picker-item-name {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-primary);
+}
+
+.dir-picker-item-path {
+	font-size: 10px;
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dir-picker-empty {
+	font-size: 12px;
+	color: var(--text-secondary);
+	padding: 12px 0;
+	text-align: center;
+}
+
+.dir-picker-separator {
+	height: 1px;
+	background: var(--border-color);
+	margin: 12px 0;
+}
+
+.dir-picker-browse,
+.dir-picker-cancel {
+	width: 100%;
+	padding: 8px;
+	border-radius: 4px;
+	font-size: 12px;
+	cursor: pointer;
+	border: 1px solid var(--border-color);
+	transition: background 0.15s;
+}
+
+.dir-picker-browse {
+	background: var(--accent);
+	color: #fff;
+	border-color: var(--accent);
+	margin-bottom: 6px;
+}
+
+.dir-picker-browse:hover {
+	background: var(--accent-hover);
+}
+
+.dir-picker-cancel {
+	background: var(--bg-primary);
+	color: var(--text-secondary);
+}
+
+.dir-picker-cancel:hover {
+	background: var(--border-color);
+	color: var(--text-primary);
+}

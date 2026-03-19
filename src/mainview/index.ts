@@ -17,6 +17,7 @@ import { recalculateLayout, getContainer, setupResizeHandler } from "./layout.ts
 import { getSplitInsertIndex } from "../shared/gridCalc.ts";
 import { createTileElement } from "./tileDOM.ts";
 import { showTileContextMenu } from "./contextMenu.ts";
+import { showDirPickerModal } from "./dirPickerModal.ts";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -118,6 +119,7 @@ function setTileColor(tile: Tile, color: string): void {
 interface CreateTileOpts {
 	name?: string;
 	command?: string;
+	cwd?: string;
 	splitDirection?: "horizontal" | "vertical";
 }
 
@@ -176,6 +178,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		cols: term.cols,
 		rows: term.rows,
 		command,
+		cwd: opts?.cwd,
 	});
 
 	tileEl.dataset.tileId = id;
@@ -230,7 +233,13 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 
 // --- Toolbar ---
 
-document.getElementById("btn-add")?.addEventListener("click", () => createTile());
+document.getElementById("btn-add")?.addEventListener("click", async () => {
+	const dir = await showDirPickerModal(rpc);
+	if (dir) {
+		await rpc.request.saveRecentDir({ dir });
+		createTile({ cwd: dir });
+	}
+});
 document.getElementById("btn-split-h")?.addEventListener("click", () =>
 	createTile({ splitDirection: "horizontal" })
 );
@@ -251,4 +260,13 @@ document.querySelectorAll(".view-btn").forEach((btn) => {
 // --- Init ---
 
 setupResizeHandler();
-createTile();
+
+(async () => {
+	const dir = await showDirPickerModal(rpc);
+	if (dir) {
+		await rpc.request.saveRecentDir({ dir });
+		createTile({ cwd: dir });
+	} else {
+		createTile();
+	}
+})();

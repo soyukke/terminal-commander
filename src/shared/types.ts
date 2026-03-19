@@ -16,6 +16,18 @@ export type TerminalRPCType = {
 				params: { id: string };
 				response: { success: boolean };
 			};
+			browseDirectory: {
+				params: { startingFolder?: string };
+				response: { path: string | null };
+			};
+			getRecentDirs: {
+				params: {};
+				response: { dirs: string[] };
+			};
+			saveRecentDir: {
+				params: { dir: string };
+				response: { success: boolean };
+			};
 		};
 		messages: {
 			writeToTerminal: { id: string; data: string };

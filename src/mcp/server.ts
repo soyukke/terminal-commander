@@ -75,7 +75,7 @@ const TOOLS = [
 	{
 		name: "send_to_pane",
 		description:
-			"他のペインで動作中の Claude Code にメッセージを送信する。メッセージはそのペインのテキスト入力に書き込まれ、Enter で送信される。",
+			"他のペインで動作中の Claude Code にメッセージを送信する。メッセージはそのペインのテキスト入力に書き込まれ、Enter で送信される。送信元ペインの情報が自動的にメッセージに付与される。",
 		inputSchema: {
 			type: "object" as const,
 			properties: {
@@ -84,12 +84,17 @@ const TOOLS = [
 					description:
 						'送信先のターミナル ID (例: "term-0")。list_panes で確認可能。',
 				},
+				from_terminal_id: {
+					type: "string",
+					description:
+						'送信元の自分のターミナル ID (例: "term-0")。list_panes で自分の ID を確認して指定する。',
+				},
 				message: {
 					type: "string",
 					description: "送信するメッセージテキスト",
 				},
 			},
-			required: ["terminal_id", "message"],
+			required: ["terminal_id", "from_terminal_id", "message"],
 		},
 	},
 	{
@@ -175,9 +180,11 @@ async function handleToolCall(
 	try {
 		switch (name) {
 			case "send_to_pane": {
+				const fromId = args.from_terminal_id;
+				const prefixed = `[from ${fromId}] ${args.message}`;
 				const result = await inspectorCall("send_to_terminal", {
 					terminal_id: args.terminal_id,
-					message: args.message,
+					message: prefixed,
 				});
 				if (result.error) {
 					return makeResponse(id, {
@@ -194,7 +201,7 @@ async function handleToolCall(
 					content: [
 						{
 							type: "text",
-							text: `メッセージを ${args.terminal_id} に送信しました。`,
+							text: `メッセージを ${fromId} → ${args.terminal_id} に送信しました。`,
 						},
 					],
 				});

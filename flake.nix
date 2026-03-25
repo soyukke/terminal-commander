@@ -27,10 +27,15 @@
               zig
               pkgs.zls
               pkgs.bun
+              (pkgs.python3.withPackages (ps: [
+                ps.pytest
+              ]))
             ];
             shellHook = ''
               export ZIG_LOCAL_CACHE_DIR="$PWD/.zig-cache"
               export ZIG_GLOBAL_CACHE_DIR="$HOME/.cache/zig"
+              # playheavy Python package (editable install)
+              export PYTHONPATH="$HOME/dev/zig/playheavy/python:$PYTHONPATH"
             '';
           };
         }

@@ -111,6 +111,7 @@ const terminalEidMap = new Map<string, number>();
 // --- Title tracking + bell debounce ---
 
 const titleById = new Map<string, string>();
+const cwdById = new Map<string, string>();
 const bellDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 const activityTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const terminalStatus = new Map<string, "running" | "idle">();
@@ -188,6 +189,7 @@ const ptyManager = new PtyManager({
 		if (eid !== undefined) inspector.updateName(eid, title);
 	},
 	onCwd: (id, cwd) => {
+		cwdById.set(id, cwd);
 		mainWindow.webview.rpc.send.terminalCwd({ id, cwd });
 		const eid = terminalEidMap.get(id);
 		if (eid !== undefined) inspector.updateProperty(eid, "cwd", cwd);
@@ -256,6 +258,7 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 
 			closeTerminal: ({ id }) => {
 				titleById.delete(id);
+				cwdById.delete(id);
 				clearBellDebounce(id);
 				clearActivityTimer(id);
 				const eid = terminalEidMap.get(id);
@@ -352,6 +355,33 @@ inspector.registerMethod("close_tile", async (params) => {
 		terminalId: terminal_id,
 	});
 	return { success };
+});
+
+inspector.registerMethod("list_terminals", () => {
+	const terminals: Array<{
+		terminal_id: string;
+		name: string;
+		status: string;
+		cwd: string;
+	}> = [];
+	for (const [termId] of terminalEidMap) {
+		const title = titleById.get(termId) || `Terminal ${termId}`;
+		const status = terminalStatus.get(termId) || "unknown";
+		terminals.push({
+			terminal_id: termId,
+			name: title,
+			status,
+			cwd: cwdById.get(termId) || "",
+		});
+	}
+	return { terminals };
+});
+
+inspector.registerMethod("send_to_terminal", (params) => {
+	const { terminal_id, message } = params;
+	if (!terminal_id || !message) return { error: "missing terminal_id or message" };
+	const ok = ptyManager.write(terminal_id, message + "\r");
+	return { ok };
 });
 
 console.log("Terminal Commander started!");

@@ -175,20 +175,20 @@ describe("E2E: Working directory (cwd)", () => {
 		const { manager: m, log } = createTrackedManager();
 		manager = m;
 
-		// Use /var as a different directory to verify cwd actually changes
-		const targetDir = "/var";
+		// Use /usr as a different directory to verify cwd actually changes
+		const targetDir = "/usr";
 		const id = manager.create(80, 24, {
 			command: "pwd",
 			cwd: targetDir,
 		});
 
 		await waitFor(() =>
-			log.outputs.some((o) => o.id === id && o.data.includes("/var")),
+			log.outputs.some((o) => o.id === id && o.data.includes("/usr")),
 		);
 
 		const allOutput = collectOutput(log, id);
 		// Should NOT contain user's home dir or project dir
-		expect(allOutput).toContain("/var");
+		expect(allOutput).toContain("/usr");
 	});
 
 	test("terminal without cwd uses default directory", async () => {

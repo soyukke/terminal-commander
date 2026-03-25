@@ -1,6 +1,9 @@
+const EMPTY_PENALTY = 0.85;
+
 /**
  * Calculate the best cols x rows grid for the given tile count,
- * choosing the layout where each cell is closest to a square.
+ * choosing the layout where each cell is closest to a square
+ * while penalizing empty cells.
  */
 export function bestGrid(
 	count: number,
@@ -17,7 +20,8 @@ export function bestGrid(
 		const cellW = containerW / cols;
 		const cellH = containerH / rows;
 		const ratio = cellW / cellH;
-		const score = Math.abs(Math.log(ratio));
+		const emptyFraction = (cols * rows - count) / count;
+		const score = Math.abs(Math.log(ratio)) + emptyFraction * EMPTY_PENALTY;
 		if (score < bestScore) {
 			bestScore = score;
 			bestCols = cols;
@@ -29,9 +33,10 @@ export function bestGrid(
 
 /**
  * Determine where a new tile should be inserted relative to the focused tile.
- * "horizontal" = to the right (same row), "vertical" = below (next row).
+ * "horizontal" = right after focused in the linear order.
+ * "vertical" = same column, next row in the post-insert grid.
  *
- * Returns the index in tileOrder to insert after.
+ * Returns the index in tileOrder after which the new tile should be inserted.
  */
 export function getSplitInsertIndex(
 	focusedId: string,
@@ -44,14 +49,11 @@ export function getSplitInsertIndex(
 	const focusIdx = tileOrder.indexOf(focusedId);
 	if (focusIdx === -1) return count;
 
-	const { cols } = bestGrid(count + 1, containerW, containerH);
-	const focusRow = Math.floor(focusIdx / cols);
-	const focusCol = focusIdx % cols;
-
 	if (direction === "horizontal") {
 		return focusIdx;
-	} else {
-		const targetIdx = (focusRow + 1) * cols + focusCol;
-		return Math.min(targetIdx - 1, count);
 	}
+
+	// Vertical: target position is one grid-row below focused
+	const { cols } = bestGrid(count + 1, containerW, containerH);
+	return Math.min(focusIdx + cols - 1, count - 1);
 }

@@ -6,15 +6,40 @@ type RPC = {
 	};
 };
 
+/** Create a clickable directory item element */
+function createDirItem(dir: string, onClick: () => void): HTMLElement {
+	const item = document.createElement("div");
+	item.className = "dir-picker-item";
+
+	const dirName = dir.split("/").filter(Boolean).pop() || dir;
+
+	const nameEl = document.createElement("span");
+	nameEl.className = "dir-picker-item-name";
+	nameEl.textContent = dirName;
+
+	const pathEl = document.createElement("span");
+	pathEl.className = "dir-picker-item-path";
+	pathEl.textContent = dir;
+
+	item.appendChild(nameEl);
+	item.appendChild(pathEl);
+	item.addEventListener("click", onClick);
+	return item;
+}
+
 /**
  * Show a modal to pick a working directory.
  * Returns the selected path, or null if cancelled.
  */
-export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
+export async function showDirPickerModal(
+	rpc: RPC,
+	focusedCwd?: string,
+): Promise<string | null> {
 	const { dirs: recentDirs } = await rpc.request.getRecentDirs({});
 
 	return new Promise<string | null>((resolve) => {
 		let resolved = false;
+		let browsing = false;
 		let onKeyDown: (e: KeyboardEvent) => void;
 		const finish = (result: string | null) => {
 			if (resolved) return;
@@ -41,8 +66,25 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 		title.textContent = "Working Directory";
 		modal.appendChild(title);
 
-		// Recent dirs list
-		if (recentDirs.length > 0) {
+		// --- Current directory (from focused tile) ---
+		if (focusedCwd) {
+			const label = document.createElement("div");
+			label.className = "dir-picker-label";
+			label.textContent = "Current";
+			modal.appendChild(label);
+
+			const item = createDirItem(focusedCwd, () => finish(focusedCwd));
+			item.classList.add("dir-picker-item--current");
+			modal.appendChild(item);
+
+			const sep = document.createElement("div");
+			sep.className = "dir-picker-separator";
+			modal.appendChild(sep);
+		}
+
+		// --- Recent dirs list ---
+		const filteredRecent = recentDirs.filter((d) => d !== focusedCwd);
+		if (filteredRecent.length > 0) {
 			const label = document.createElement("div");
 			label.className = "dir-picker-label";
 			label.textContent = "Recent";
@@ -51,29 +93,12 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 			const list = document.createElement("div");
 			list.className = "dir-picker-list";
 
-			for (const dir of recentDirs) {
-				const item = document.createElement("div");
-				item.className = "dir-picker-item";
-
-				const dirName = dir.split("/").filter(Boolean).pop() || dir;
-				const dirPath = dir;
-
-				const nameEl = document.createElement("span");
-				nameEl.className = "dir-picker-item-name";
-				nameEl.textContent = dirName;
-
-				const pathEl = document.createElement("span");
-				pathEl.className = "dir-picker-item-path";
-				pathEl.textContent = dirPath;
-
-				item.appendChild(nameEl);
-				item.appendChild(pathEl);
-				item.addEventListener("click", () => finish(dir));
-				list.appendChild(item);
+			for (const dir of filteredRecent) {
+				list.appendChild(createDirItem(dir, () => finish(dir)));
 			}
 
 			modal.appendChild(list);
-		} else {
+		} else if (!focusedCwd) {
 			const empty = document.createElement("div");
 			empty.className = "dir-picker-empty";
 			empty.textContent = "No recent directories";
@@ -86,14 +111,15 @@ export async function showDirPickerModal(rpc: RPC): Promise<string | null> {
 		modal.appendChild(sep);
 
 		// Browse button
-		let browsing = false;
 		const browseBtn = document.createElement("button");
 		browseBtn.className = "dir-picker-browse";
 		browseBtn.textContent = "Browse...";
 		browseBtn.addEventListener("click", async () => {
 			browsing = true;
 			try {
-				const { path } = await rpc.request.browseDirectory({});
+				const { path } = await rpc.request.browseDirectory({
+					startingFolder: focusedCwd,
+				});
 				if (path) finish(path);
 			} catch {
 				// RPC timeout or error — user can retry or cancel

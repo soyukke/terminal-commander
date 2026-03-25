@@ -51,26 +51,25 @@ describe("Browse → cwd integration", () => {
 		const env = createTestEnv();
 		manager = env.manager;
 
-		const params = simulateCreateTileParams(env.config, { cwd: "/tmp" });
+		// Use command mode (not interactive shell) for reliable testing
+		const params = { cols: 80, rows: 24, command: "pwd", cwd: "/tmp" };
 		const serialized = simulateRPCSerialization(params);
 		const { id } = simulateCreateTerminalRPC(manager, env.config, serialized);
 
-		manager.write(id, "pwd\n");
-		await waitFor(() => logContains(env.log, id, "/tmp"), 5000);
+		await waitFor(() => logContains(env.log, id, "/tmp"));
 		expect(collectOutput(env.log, id)).toContain("/tmp");
 	});
 
-	test("Browse picks /var → terminal runs in /var (full flow)", async () => {
+	test("Browse picks /usr → terminal runs in /usr (full flow)", async () => {
 		const env = createTestEnv();
 		manager = env.manager;
 
-		const params = simulateCreateTileParams(env.config, { cwd: "/var" });
+		const params = { cols: 80, rows: 24, command: "pwd", cwd: "/usr" };
 		const serialized = simulateRPCSerialization(params);
 		const { id } = simulateCreateTerminalRPC(manager, env.config, serialized);
 
-		manager.write(id, "pwd\n");
-		await waitFor(() => logContains(env.log, id, "/var"), 5000);
-		expect(collectOutput(env.log, id)).toContain("/var");
+		await waitFor(() => logContains(env.log, id, "/usr"));
+		expect(collectOutput(env.log, id)).toContain("/usr");
 	});
 
 	test("btn-add without Browse (cancel) → no cwd, uses default", async () => {

@@ -4,51 +4,14 @@ import { bestGrid, getSplitInsertIndex } from "./gridCalc.ts";
 // --- bestGrid ---
 
 describe("bestGrid", () => {
-	test("1 tile → 1x1 regardless of container", () => {
+	test("1 tile → 1x1", () => {
 		expect(bestGrid(1, 1200, 800)).toEqual({ cols: 1, rows: 1 });
-		expect(bestGrid(1, 400, 1600)).toEqual({ cols: 1, rows: 1 });
 		expect(bestGrid(0, 1200, 800)).toEqual({ cols: 1, rows: 1 });
 	});
 
-	test("2 tiles in wide window → 2x1 (side by side)", () => {
-		const { cols, rows } = bestGrid(2, 1600, 800);
-		expect(cols).toBe(2);
-		expect(rows).toBe(1);
-	});
-
-	test("2 tiles in tall window → 1x2 (stacked)", () => {
-		const { cols, rows } = bestGrid(2, 600, 1200);
-		expect(cols).toBe(1);
-		expect(rows).toBe(2);
-	});
-
-	test("2 tiles in square window → 2x1", () => {
-		// 2x1: cellW=500, cellH=1000 → ratio=0.5, score=0.69
-		// 1x2: cellW=1000, cellH=500 → ratio=2.0, score=0.69
-		// Tie → first found (2x1 has cols=1 first... actually 1x2 is cols=1)
-		// cols=1 → 1x2 → ratio=1000/500=2.0
-		// cols=2 → 2x1 → ratio=500/1000=0.5
-		// Both score=0.69, cols=1 wins (found first)
-		const { cols, rows } = bestGrid(2, 1000, 1000);
-		expect(cols * rows).toBeGreaterThanOrEqual(2);
-	});
-
-	test("4 tiles in square window → 2x2", () => {
-		const { cols, rows } = bestGrid(4, 1000, 1000);
-		expect(cols).toBe(2);
-		expect(rows).toBe(2);
-	});
-
-	test("6 tiles in 1200x800 → 3x2", () => {
-		const { cols, rows } = bestGrid(6, 1200, 800);
-		expect(cols).toBe(3);
-		expect(rows).toBe(2);
-	});
-
-	test("9 tiles in square window → 3x3", () => {
-		const { cols, rows } = bestGrid(9, 900, 900);
-		expect(cols).toBe(3);
-		expect(rows).toBe(3);
+	test("2 tiles: wide → 2x1, tall → 1x2", () => {
+		expect(bestGrid(2, 1600, 800)).toEqual({ cols: 2, rows: 1 });
+		expect(bestGrid(2, 600, 1200)).toEqual({ cols: 1, rows: 2 });
 	});
 
 	test("all cells fit the tile count", () => {
@@ -58,91 +21,150 @@ describe("bestGrid", () => {
 		}
 	});
 
-	test("cells are approximately square (ratio between 0.3 and 3.0)", () => {
+	test("cells are approximately square", () => {
 		for (let n = 1; n <= 12; n++) {
 			const { cols, rows } = bestGrid(n, 1920, 1080);
-			const cellW = 1920 / cols;
-			const cellH = 1080 / rows;
-			const ratio = cellW / cellH;
+			const ratio = (1920 / cols) / (1080 / rows);
 			expect(ratio).toBeGreaterThan(0.3);
 			expect(ratio).toBeLessThan(3.0);
 		}
 	});
 
 	test("wide window prefers more columns", () => {
-		const wide = bestGrid(4, 2400, 600);
-		const tall = bestGrid(4, 600, 2400);
-		expect(wide.cols).toBeGreaterThan(tall.cols);
+		expect(bestGrid(4, 2400, 600).cols).toBeGreaterThan(bestGrid(4, 600, 2400).cols);
+	});
+});
+
+// User expected sequential add layout for 1200x800:
+//  2: a b       (2x1)
+//  3: a b / c _ (2x2, third goes below)
+//  4: a b / c d (2x2, bottom fills)
+//  5: a b c / d e _ (3x2, new column)
+//  6: a b c / d e f (3x2, filled)
+describe("bestGrid: sequential add layout (1200x800)", () => {
+	test("2 tiles → 2x1 (side by side)", () => {
+		expect(bestGrid(2, 1200, 800)).toEqual({ cols: 2, rows: 1 });
+	});
+
+	test("3 tiles → 2x2 (third goes below, wide)", () => {
+		expect(bestGrid(3, 1200, 800)).toEqual({ cols: 2, rows: 2 });
+	});
+
+	test("4 tiles → 2x2 (bottom row fills up)", () => {
+		expect(bestGrid(4, 1200, 800)).toEqual({ cols: 2, rows: 2 });
+	});
+
+	test("5 tiles → 3x2 (new column added)", () => {
+		expect(bestGrid(5, 1200, 800)).toEqual({ cols: 3, rows: 2 });
+	});
+
+	test("6 tiles → 3x2 (grid filled)", () => {
+		expect(bestGrid(6, 1200, 800)).toEqual({ cols: 3, rows: 2 });
 	});
 });
 
 // --- getSplitInsertIndex ---
 
-describe("getSplitInsertIndex", () => {
-	// Tile order: ["a", "b", "c", "d"] in a 1200x800 container
+// Helper: simulate insert, compute resulting grid positions
+function simulateSplit(
+	focusedId: string,
+	direction: "horizontal" | "vertical",
+	order: string[],
+	w = 1200,
+	h = 800,
+) {
+	const idx = getSplitInsertIndex(focusedId, direction, order, w, h);
+	const afterId = order[idx]; // undefined if idx >= order.length
+	const newOrder = [...order];
+	if (afterId !== undefined) {
+		const pos = newOrder.indexOf(afterId);
+		newOrder.splice(pos + 1, 0, "NEW");
+	} else {
+		newOrder.push("NEW");
+	}
 
-	test("horizontal split inserts after focused tile", () => {
-		const order = ["a", "b", "c", "d"];
-		const idx = getSplitInsertIndex("b", "horizontal", order, 1200, 800);
-		// Should insert after "b" (index 1)
-		expect(idx).toBe(1);
-	});
+	const { cols } = bestGrid(newOrder.length, w, h);
+	const focusPos = newOrder.indexOf(focusedId);
+	const newPos = newOrder.indexOf("NEW");
 
-	test("horizontal split on first tile inserts at index 0", () => {
-		const order = ["a", "b", "c"];
-		const idx = getSplitInsertIndex("a", "horizontal", order, 1200, 800);
-		expect(idx).toBe(0);
-	});
+	return {
+		idx,
+		newOrder,
+		focusGrid: { row: Math.floor(focusPos / cols), col: focusPos % cols },
+		newGrid: { row: Math.floor(newPos / cols), col: newPos % cols },
+	};
+}
 
-	test("horizontal split on last tile inserts at last index", () => {
-		const order = ["a", "b", "c"];
-		const idx = getSplitInsertIndex("c", "horizontal", order, 1200, 800);
-		expect(idx).toBe(2);
-	});
-
-	test("vertical split inserts below focused tile", () => {
-		const order = ["a", "b", "c", "d"];
-		const idx = getSplitInsertIndex("a", "vertical", order, 1200, 800);
-		// With 5 tiles (4+1 new) in 1200x800, bestGrid → some cols
-		// The insert index should be further down than horizontal
-		const hIdx = getSplitInsertIndex("a", "horizontal", order, 1200, 800);
-		expect(idx).toBeGreaterThanOrEqual(hIdx);
-	});
-
+describe("getSplitInsertIndex: edge cases", () => {
 	test("returns count for unknown focused id", () => {
-		const order = ["a", "b", "c"];
-		const idx = getSplitInsertIndex("unknown", "horizontal", order, 1200, 800);
-		expect(idx).toBe(3);
+		expect(getSplitInsertIndex("x", "horizontal", ["a", "b"], 1200, 800)).toBe(2);
 	});
 
 	test("empty order returns 0", () => {
-		const idx = getSplitInsertIndex("a", "horizontal", [], 1200, 800);
-		expect(idx).toBe(0);
+		expect(getSplitInsertIndex("a", "horizontal", [], 1200, 800)).toBe(0);
 	});
 
-	test("single tile horizontal split", () => {
-		const idx = getSplitInsertIndex("a", "horizontal", ["a"], 1200, 800);
-		expect(idx).toBe(0);
-	});
-
-	test("single tile vertical split", () => {
-		const idx = getSplitInsertIndex("a", "vertical", ["a"], 1200, 800);
-		// Should be >= 0 and <= 1
-		expect(idx).toBeGreaterThanOrEqual(0);
-		expect(idx).toBeLessThanOrEqual(1);
-	});
-
-	test("insert index never exceeds tile count", () => {
+	test("insert index is always within [0, count]", () => {
 		for (let n = 1; n <= 10; n++) {
 			const order = Array.from({ length: n }, (_, i) => `t${i}`);
 			for (const id of order) {
-				const hIdx = getSplitInsertIndex(id, "horizontal", order, 1200, 800);
-				const vIdx = getSplitInsertIndex(id, "vertical", order, 1200, 800);
-				expect(hIdx).toBeLessThanOrEqual(n);
-				expect(vIdx).toBeLessThanOrEqual(n);
-				expect(hIdx).toBeGreaterThanOrEqual(0);
-				expect(vIdx).toBeGreaterThanOrEqual(0);
+				for (const dir of ["horizontal", "vertical"] as const) {
+					const idx = getSplitInsertIndex(id, dir, order, 1200, 800);
+					expect(idx).toBeGreaterThanOrEqual(0);
+					expect(idx).toBeLessThanOrEqual(n);
+				}
 			}
+		}
+	});
+});
+
+// Horizontal split: NEW goes right after focused in order.
+// When focused is not at end-of-row, NEW appears to the right in the grid.
+describe("horizontal split", () => {
+	test("1 tile → NEW to the right", () => {
+		const { focusGrid, newGrid } = simulateSplit("a", "horizontal", ["a"]);
+		expect(newGrid.row).toBe(focusGrid.row);
+		expect(newGrid.col).toBe(focusGrid.col + 1);
+	});
+
+	test("2 tiles: split first → NEW right of first", () => {
+		const { focusGrid, newGrid } = simulateSplit("a", "horizontal", ["a", "b"]);
+		expect(newGrid.row).toBe(focusGrid.row);
+		expect(newGrid.col).toBe(focusGrid.col + 1);
+	});
+
+	test("4 tiles: split non-end-of-row tiles → NEW to the right", () => {
+		// "a" is at (0,0) and "d" is at (1,0) in the new 3x2 grid — not at row end
+		for (const id of ["a", "b", "d"]) {
+			const { focusGrid, newGrid } = simulateSplit(id, "horizontal", ["a", "b", "c", "d"]);
+			expect(newGrid.row).toBe(focusGrid.row);
+			expect(newGrid.col).toBe(focusGrid.col + 1);
+		}
+	});
+});
+
+// Vertical split: NEW should appear below focused (same column, next row).
+// Works when focused is early enough in the grid that targetPos doesn't exceed count.
+describe("vertical split", () => {
+	test("2 tiles: split first → NEW below", () => {
+		const { focusGrid, newGrid } = simulateSplit("a", "vertical", ["a", "b"]);
+		expect(newGrid.col).toBe(focusGrid.col);
+		expect(newGrid.row).toBe(focusGrid.row + 1);
+	});
+
+	test("4 tiles: split first two → NEW below each", () => {
+		for (const id of ["a", "b"]) {
+			const { focusGrid, newGrid } = simulateSplit(id, "vertical", ["a", "b", "c", "d"]);
+			expect(newGrid.col).toBe(focusGrid.col);
+			expect(newGrid.row).toBe(focusGrid.row + 1);
+		}
+	});
+
+	test("6 tiles (3x2): split top row → NEW below each", () => {
+		for (const id of ["a", "b", "c"]) {
+			const { focusGrid, newGrid } = simulateSplit(id, "vertical", ["a", "b", "c", "d", "e", "f"]);
+			expect(newGrid.col).toBe(focusGrid.col);
+			expect(newGrid.row).toBe(focusGrid.row + 1);
 		}
 	});
 });

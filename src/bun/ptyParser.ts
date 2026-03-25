@@ -1,5 +1,6 @@
 export interface PtyParseResult {
 	title?: string;
+	cwd?: string;
 	hasBell: boolean;
 }
 
@@ -8,15 +9,32 @@ type State =
 	| "ESC"
 	| "OSC_NUM"
 	| "OSC_TITLE"
+	| "OSC_CWD"
 	| "OSC_SKIP"
 	| "OSC_ESC"
+	| "OSC_CWD_ESC"
 	| "CSI";
 
 const NO_OP: PtyParseResult = { hasBell: false };
 
+/** Extract filesystem path from OSC 7 value (file://hostname/path) */
+function extractPathFromOsc7(raw: string): string | undefined {
+	try {
+		if (raw.startsWith("file://")) {
+			const url = new URL(raw);
+			return decodeURIComponent(url.pathname) || undefined;
+		}
+		// Some shells emit just the path
+		if (raw.startsWith("/")) return raw;
+	} catch {
+		// Malformed URL
+	}
+	return undefined;
+}
+
 /**
- * Parse PTY output for OSC title sequences and BEL characters.
- * OSC 0/2 titles are extracted; BEL inside OSC terminators is not counted.
+ * Parse PTY output for OSC title/cwd sequences and BEL characters.
+ * OSC 0/2 titles and OSC 7 cwd are extracted; BEL inside OSC terminators is not counted.
  */
 export function parsePtyOutput(text: string): PtyParseResult {
 	// Fast path: most chunks contain no escape sequences or bell
@@ -25,6 +43,7 @@ export function parsePtyOutput(text: string): PtyParseResult {
 	}
 
 	let title: string | undefined;
+	let cwd: string | undefined;
 	let hasBell = false;
 
 	let state: State = "NORMAL";
@@ -61,7 +80,7 @@ export function parsePtyOutput(text: string): PtyParseResult {
 				if (code === 0x3b) {
 					// ;
 					const n = parseInt(oscNum, 10);
-					state = n === 0 || n === 2 ? "OSC_TITLE" : "OSC_SKIP";
+					state = n === 0 || n === 2 ? "OSC_TITLE" : n === 7 ? "OSC_CWD" : "OSC_SKIP";
 				} else if (code >= 0x30 && code <= 0x39) {
 					oscNum += text[i];
 				} else {
@@ -80,6 +99,24 @@ export function parsePtyOutput(text: string): PtyParseResult {
 				} else {
 					oscBuf += text[i];
 				}
+				break;
+
+			case "OSC_CWD":
+				if (code === 0x07) {
+					cwd = extractPathFromOsc7(oscBuf);
+					state = "NORMAL";
+				} else if (code === 0x1b) {
+					state = "OSC_CWD_ESC";
+				} else {
+					oscBuf += text[i];
+				}
+				break;
+
+			case "OSC_CWD_ESC":
+				if (code === 0x5c) {
+					cwd = extractPathFromOsc7(oscBuf);
+				}
+				state = "NORMAL";
 				break;
 
 			case "OSC_SKIP":
@@ -105,5 +142,5 @@ export function parsePtyOutput(text: string): PtyParseResult {
 		}
 	}
 
-	return { title, hasBell };
+	return { title, cwd, hasBell };
 }

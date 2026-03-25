@@ -5,6 +5,7 @@ export interface Tile {
 	name: string;
 	color: string;
 	status: TerminalStatus;
+	cwd: string;
 	terminal: any;
 	fitAddon: any;
 	element: HTMLElement;
@@ -71,4 +72,19 @@ export function nextTileName(): string {
 
 export function getFirstTileId(): string | null {
 	return tileOrder.length > 0 ? tileOrder[0] : null;
+}
+
+export function getPrevTileId(): string | null {
+	if (tileOrder.length === 0 || focusedTileId === null) return null;
+	const idx = tileOrder.indexOf(focusedTileId);
+	if (idx === -1) return tileOrder[0];
+	if (idx === 0) return tileOrder[tileOrder.length - 1];
+	return tileOrder[idx - 1];
+}
+
+export function getNextTileId(): string | null {
+	if (tileOrder.length === 0 || focusedTileId === null) return null;
+	const idx = tileOrder.indexOf(focusedTileId);
+	if (idx === -1 || idx >= tileOrder.length - 1) return tileOrder[0];
+	return tileOrder[idx + 1];
 }

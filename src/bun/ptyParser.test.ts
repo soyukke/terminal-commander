@@ -131,4 +131,44 @@ describe("parsePtyOutput", () => {
 		expect(result.title).toBeUndefined();
 		expect(result.hasBell).toBe(false);
 	});
+
+	// --- OSC 7 cwd ---
+
+	test("parses OSC 7 cwd with file:// URL (BEL terminator)", () => {
+		const result = parsePtyOutput("\x1b]7;file://localhost/Users/test/project\x07");
+		expect(result.cwd).toBe("/Users/test/project");
+		expect(result.hasBell).toBe(false);
+	});
+
+	test("parses OSC 7 cwd with file:// URL (ST terminator)", () => {
+		const result = parsePtyOutput("\x1b]7;file://localhost/tmp\x1b\\");
+		expect(result.cwd).toBe("/tmp");
+	});
+
+	test("parses OSC 7 cwd with bare path", () => {
+		const result = parsePtyOutput("\x1b]7;/home/user/dev\x07");
+		expect(result.cwd).toBe("/home/user/dev");
+	});
+
+	test("parses OSC 7 cwd with URL-encoded path", () => {
+		const result = parsePtyOutput("\x1b]7;file://localhost/Users/test/my%20project\x07");
+		expect(result.cwd).toBe("/Users/test/my project");
+	});
+
+	test("OSC 7 with empty hostname", () => {
+		const result = parsePtyOutput("\x1b]7;file:///Users/test\x07");
+		expect(result.cwd).toBe("/Users/test");
+	});
+
+	test("OSC 7 does not affect title", () => {
+		const result = parsePtyOutput("\x1b]7;file:///tmp\x07\x1b]0;My Title\x07");
+		expect(result.cwd).toBe("/tmp");
+		expect(result.title).toBe("My Title");
+	});
+
+	test("title and cwd in same chunk", () => {
+		const result = parsePtyOutput("\x1b]0;Shell\x07\x1b]7;file:///home/user\x07");
+		expect(result.title).toBe("Shell");
+		expect(result.cwd).toBe("/home/user");
+	});
 });

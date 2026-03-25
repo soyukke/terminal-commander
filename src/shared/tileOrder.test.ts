@@ -135,3 +135,79 @@ describe("tile ordering", () => {
 		expect(list.getOrder()).toEqual(["a", "d", "c"]);
 	});
 });
+
+// Test prev/next navigation logic in isolation
+
+function createNavList() {
+	const order: string[] = [];
+	let focusedId: string | null = null;
+
+	return {
+		add(id: string) {
+			order.push(id);
+		},
+		setFocused(id: string | null) {
+			focusedId = id;
+		},
+		getPrev(): string | null {
+			if (order.length === 0 || focusedId === null) return null;
+			const idx = order.indexOf(focusedId);
+			if (idx === -1) return order[0];
+			if (idx === 0) return order[order.length - 1];
+			return order[idx - 1];
+		},
+		getNext(): string | null {
+			if (order.length === 0 || focusedId === null) return null;
+			const idx = order.indexOf(focusedId);
+			if (idx === -1 || idx >= order.length - 1) return order[0];
+			return order[idx + 1];
+		},
+	};
+}
+
+describe("tile navigation (prev/next)", () => {
+	test("returns null when no tiles or no focus", () => {
+		const empty = createNavList();
+		empty.setFocused("a");
+		expect(empty.getPrev()).toBeNull();
+		expect(empty.getNext()).toBeNull();
+
+		const noFocus = createNavList();
+		noFocus.add("a");
+		noFocus.setFocused(null);
+		expect(noFocus.getPrev()).toBeNull();
+		expect(noFocus.getNext()).toBeNull();
+	});
+
+	test("navigates and wraps around", () => {
+		const nav = createNavList();
+		nav.add("a");
+		nav.add("b");
+		nav.add("c");
+
+		nav.setFocused("a");
+		expect(nav.getNext()).toBe("b");
+		expect(nav.getPrev()).toBe("c"); // wraps backward
+
+		nav.setFocused("c");
+		expect(nav.getNext()).toBe("a"); // wraps forward
+		expect(nav.getPrev()).toBe("b");
+	});
+
+	test("single tile wraps to itself", () => {
+		const nav = createNavList();
+		nav.add("a");
+		nav.setFocused("a");
+		expect(nav.getPrev()).toBe("a");
+		expect(nav.getNext()).toBe("a");
+	});
+
+	test("focused tile not in order returns first tile", () => {
+		const nav = createNavList();
+		nav.add("a");
+		nav.add("b");
+		nav.setFocused("nonexistent");
+		expect(nav.getPrev()).toBe("a");
+		expect(nav.getNext()).toBe("a");
+	});
+});

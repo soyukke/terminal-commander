@@ -4,9 +4,13 @@ type OnOutput = (id: string, data: string) => void;
 type OnExit = (id: string, exitCode: number) => void;
 type OnTitle = (id: string, title: string) => void;
 type OnBell = (id: string) => void;
+type OnCwd = (id: string, cwd: string) => void;
+
+const OUTPUT_BUFFER_MAX = 100_000; // 100KB ring buffer
 
 interface PtySession {
-	proc: ReturnType<typeof Bun.spawn>;
+	proc: ReturnType<typeof Bun.spawn> | null;
+	outputBuffer: string;
 }
 
 interface PtyManagerOpts {
@@ -14,6 +18,7 @@ interface PtyManagerOpts {
 	onExit: OnExit;
 	onTitle?: OnTitle;
 	onBell?: OnBell;
+	onCwd?: OnCwd;
 }
 
 const decoder = new TextDecoder();
@@ -25,12 +30,14 @@ export class PtyManager {
 	private onExit: OnExit;
 	private onTitle?: OnTitle;
 	private onBell?: OnBell;
+	private onCwd?: OnCwd;
 
 	constructor(opts: PtyManagerOpts) {
 		this.onOutput = opts.onOutput;
 		this.onExit = opts.onExit;
 		this.onTitle = opts.onTitle;
 		this.onBell = opts.onBell;
+		this.onCwd = opts.onCwd;
 	}
 
 	create(
@@ -45,6 +52,10 @@ export class PtyManager {
 
 		const args = opts?.command ? [shell, "-c", opts.command] : [shell];
 
+		// Register session before spawn so data callbacks can find it
+		const session: PtySession = { proc: null, outputBuffer: "" };
+		this.sessions.set(id, session);
+
 		const proc = Bun.spawn(args, {
 			cwd: opts?.cwd || undefined,
 			terminal: {
@@ -58,11 +69,20 @@ export class PtyManager {
 					if (parsed.title !== undefined && this.onTitle) {
 						this.onTitle(id, parsed.title);
 					}
+					if (parsed.cwd !== undefined && this.onCwd) {
+						this.onCwd(id, parsed.cwd);
+					}
 					if (parsed.hasBell && this.onBell) {
 						this.onBell(id);
 					}
 
-					this.onOutput(id, text);
+					// Append to output buffer (ring buffer)
+				session.outputBuffer += text;
+				if (session.outputBuffer.length > OUTPUT_BUFFER_MAX) {
+					session.outputBuffer = session.outputBuffer.slice(-OUTPUT_BUFFER_MAX);
+				}
+
+				this.onOutput(id, text);
 				},
 			},
 			env: {
@@ -72,6 +92,8 @@ export class PtyManager {
 				COLORTERM: "truecolor",
 			},
 		});
+
+		session.proc = proc;
 
 		proc.exited
 			.then((exitCode) => {
@@ -89,20 +111,19 @@ export class PtyManager {
 				}
 			});
 
-		this.sessions.set(id, { proc });
 		return id;
 	}
 
 	write(id: string, data: string): boolean {
 		const session = this.sessions.get(id);
-		if (!session) return false;
+		if (!session?.proc) return false;
 		session.proc.terminal?.write(data);
 		return true;
 	}
 
 	resize(id: string, cols: number, rows: number): boolean {
 		const session = this.sessions.get(id);
-		if (!session) return false;
+		if (!session?.proc) return false;
 		session.proc.terminal?.resize(cols, rows);
 		return true;
 	}
@@ -111,8 +132,12 @@ export class PtyManager {
 		const session = this.sessions.get(id);
 		if (!session) return false;
 		this.sessions.delete(id);
-		session.proc.kill();
+		session.proc?.kill();
 		return true;
+	}
+
+	getOutputBuffer(id: string): string | null {
+		return this.sessions.get(id)?.outputBuffer ?? null;
 	}
 
 	closeAll(): void {

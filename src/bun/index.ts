@@ -1,5 +1,5 @@
 import { BrowserWindow, BrowserView, Utils } from "electrobun/bun";
-import { RPC_MAX_REQUEST_TIME, type TerminalRPCType } from "../shared/types.ts";
+import { RPC_MAX_REQUEST_TIME, type TerminalRPCType, type SessionData, type SessionTile } from "../shared/types.ts";
 import {
 	DEFAULT_CONFIG,
 	parseConfigFile,
@@ -7,6 +7,7 @@ import {
 	type AppConfig,
 } from "../shared/config.ts";
 import { PtyManager } from "./ptyManager.ts";
+import { InspectorServer } from "./inspector.ts";
 import { join } from "path";
 import { homedir } from "os";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -65,6 +66,48 @@ function addRecentDir(dir: string): void {
 	saveRecentDirs(dirs.slice(0, MAX_RECENT_DIRS));
 }
 
+// --- Session persistence ---
+
+const SESSION_PATH = join(homedir(), ".config", "terminal-commander", "session.json");
+const SESSION_VERSION = 1;
+
+function loadSessionFile(): SessionData | null {
+	try {
+		const content = readFileSync(SESSION_PATH, "utf-8");
+		const data = JSON.parse(content);
+		if (data?.version === SESSION_VERSION && Array.isArray(data?.tiles)) {
+			return data as SessionData;
+		}
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function saveSessionFile(tiles: SessionTile[]): void {
+	const configDir = join(homedir(), ".config", "terminal-commander");
+	try {
+		mkdirSync(configDir, { recursive: true });
+	} catch { /* already exists */ }
+	const data: SessionData = {
+		version: SESSION_VERSION,
+		savedAt: new Date().toISOString(),
+		tiles,
+	};
+	writeFileSync(SESSION_PATH, JSON.stringify(data, null, 2));
+}
+
+// --- Inspector (playheavy E2E テスト用) ---
+
+const inspector = new InspectorServer();
+const inspectorPort = config["inspector-port"] || 0;
+if (inspectorPort > 0) {
+	inspector.start(inspectorPort);
+}
+
+// terminal id → inspector eid mapping
+const terminalEidMap = new Map<string, number>();
+
 // --- Title tracking + bell debounce ---
 
 const titleById = new Map<string, string>();
@@ -79,6 +122,8 @@ function updateTerminalStatus(id: string, status: "running" | "idle"): void {
 	if (prev === status) return;
 	terminalStatus.set(id, status);
 	mainWindow.webview.rpc.send.terminalStatus({ id, status });
+	const eid = terminalEidMap.get(id);
+	if (eid !== undefined) inspector.updateProperty(eid, "status", status);
 }
 
 const lastResetTime = new Map<string, number>();
@@ -129,10 +174,23 @@ const ptyManager = new PtyManager({
 		mainWindow.webview.rpc.send.terminalOutput({ id, data });
 		updateTerminalStatus(id, "running");
 		resetIdleTimer(id);
+		// Inspector: update element text with latest output snippet
+		const eid = terminalEidMap.get(id);
+		if (eid !== undefined) {
+			const buf = ptyManager.getOutputBuffer(id);
+			if (buf) inspector.updateText(eid, buf.slice(-4000));
+		}
 	},
 	onTitle: (id, title) => {
 		titleById.set(id, title);
 		mainWindow.webview.rpc.send.terminalTitle({ id, title });
+		const eid = terminalEidMap.get(id);
+		if (eid !== undefined) inspector.updateName(eid, title);
+	},
+	onCwd: (id, cwd) => {
+		mainWindow.webview.rpc.send.terminalCwd({ id, cwd });
+		const eid = terminalEidMap.get(id);
+		if (eid !== undefined) inspector.updateProperty(eid, "cwd", cwd);
 	},
 	onBell: (id) => {
 		mainWindow.webview.rpc.send.terminalBell({ id });
@@ -161,6 +219,11 @@ const ptyManager = new PtyManager({
 		titleById.delete(id);
 		clearBellDebounce(id);
 		clearActivityTimer(id);
+		const eid = terminalEidMap.get(id);
+		if (eid !== undefined) {
+			inspector.updateProperty(eid, "status", "exited");
+			inspector.updateProperty(eid, "exit_code", String(exitCode));
+		}
 	},
 });
 
@@ -173,11 +236,21 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 			getConfig: () => ({ config }),
 
 			createTerminal: ({ cols, rows, command, cwd }) => {
+				const resolvedCwd = cwd || config["working-directory"] || undefined;
 				const id = ptyManager.create(cols, rows, {
 					command,
-					cwd: cwd || config["working-directory"] || undefined,
+					cwd: resolvedCwd,
 					env: config.env,
 				});
+				const eid = inspector.register({
+					name: `Terminal ${id}`,
+					properties: {
+						terminal_id: id,
+						status: "running",
+						cwd: resolvedCwd || "",
+					},
+				});
+				terminalEidMap.set(id, eid);
 				return { id };
 			},
 
@@ -185,6 +258,11 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 				titleById.delete(id);
 				clearBellDebounce(id);
 				clearActivityTimer(id);
+				const eid = terminalEidMap.get(id);
+				if (eid !== undefined) {
+					inspector.unregister(eid);
+					terminalEidMap.delete(id);
+				}
 				return { success: ptyManager.close(id) };
 			},
 
@@ -206,6 +284,16 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 			saveRecentDir: ({ dir }) => {
 				addRecentDir(dir);
 				return { success: true };
+			},
+
+			saveSession: ({ tiles }) => {
+				saveSessionFile(tiles);
+				if (!inspector.ready) inspector.setReady();
+				return { success: true };
+			},
+
+			loadSession: () => {
+				return { session: loadSessionFile() };
 			},
 		},
 		messages: {
@@ -231,6 +319,39 @@ mainWindow = new BrowserWindow({
 		y: 100,
 	},
 	rpc: terminalRPC,
+});
+
+// --- Inspector custom methods ---
+
+inspector.registerMethod("write_to_terminal", (params) => {
+	const { terminal_id, data } = params;
+	if (!terminal_id || !data) return { error: "missing terminal_id or data" };
+	const ok = ptyManager.write(terminal_id, data);
+	return { ok };
+});
+
+inspector.registerMethod("get_terminal_output", (params) => {
+	const { terminal_id } = params;
+	if (!terminal_id) return { error: "missing terminal_id" };
+	const output = ptyManager.getOutputBuffer(terminal_id);
+	return { text: output || "" };
+});
+
+inspector.registerMethod("create_tile", async (params) => {
+	const { id } = await mainWindow.webview.rpc.request.inspectorCreateTile({
+		command: params.command || undefined,
+		cwd: params.cwd || undefined,
+	});
+	return { terminal_id: id };
+});
+
+inspector.registerMethod("close_tile", async (params) => {
+	const { terminal_id } = params;
+	if (!terminal_id) return { error: "missing terminal_id" };
+	const { success } = await mainWindow.webview.rpc.request.inspectorCloseTile({
+		terminalId: terminal_id,
+	});
+	return { success };
 });
 
 console.log("Terminal Commander started!");

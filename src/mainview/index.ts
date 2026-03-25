@@ -1,5 +1,5 @@
 import { Electroview } from "electrobun/view";
-import { RPC_MAX_REQUEST_TIME, type TerminalRPCType, type TerminalStatus } from "../shared/types.ts";
+import { RPC_MAX_REQUEST_TIME, type TerminalRPCType, type TerminalStatus, type SessionTile } from "../shared/types.ts";
 import { configToTerminalOptions, type AppConfig, DEFAULT_CONFIG } from "../shared/config.ts";
 import {
 	type Tile,
@@ -12,12 +12,16 @@ import {
 	nextTileName,
 	getFirstTileId,
 	getTileOrder,
+	getPrevTileId,
+	getNextTileId,
+	allTiles,
 } from "./tileState.ts";
 import { recalculateLayout, getContainer, setupResizeHandler } from "./layout.ts";
 import { getSplitInsertIndex } from "../shared/gridCalc.ts";
 import { createTileElement } from "./tileDOM.ts";
 import { showTileContextMenu } from "./contextMenu.ts";
 import { showDirPickerModal } from "./dirPickerModal.ts";
+import { resolveKeybindings, makeXtermKeyHandler } from "./keybindings.ts";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -27,7 +31,21 @@ declare const FitAddon: any;
 const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 	maxRequestTime: RPC_MAX_REQUEST_TIME,
 	handlers: {
-		requests: {},
+		requests: {
+			inspectorCreateTile: async ({ command, cwd }) => {
+				await createTile({ command: command || undefined, cwd: cwd || undefined });
+				// Return the id of the last created tile
+				const order = getTileOrder();
+				const lastId = order[order.length - 1];
+				return { id: lastId || "" };
+			},
+			inspectorCloseTile: async ({ terminalId }) => {
+				const tile = getTile(terminalId);
+				if (!tile) return { success: false };
+				await closeTile(terminalId);
+				return { success: true };
+			},
+		},
 		messages: {
 			terminalOutput: ({ id, data }) => {
 				getTile(id)?.terminal.write(data);
@@ -61,6 +79,13 @@ const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 					setTileStatus(tile, status);
 				}
 			},
+			terminalCwd: ({ id, cwd }) => {
+				const tile = getTile(id);
+				if (tile) {
+					tile.cwd = cwd;
+					triggerSessionSave();
+				}
+			},
 		},
 	},
 });
@@ -85,6 +110,92 @@ async function loadConfig() {
 	document.documentElement.style.setProperty("--text-primary", config.foreground);
 
 	return cachedConfig;
+}
+
+// --- Session auto-save (debounced) ---
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function triggerSessionSave(): void {
+	if (saveTimer) clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => {
+		const tiles: SessionTile[] = allTiles().map((t) => ({
+			name: t.name,
+			color: t.color,
+			cwd: t.cwd,
+			command: null, // command is not tracked per-tile after creation
+		}));
+		rpc.request.saveSession({ tiles }).catch((err) => {
+			console.error("Session save failed:", err);
+		});
+	}, 200);
+}
+
+// --- Keybinding setup ---
+
+let xtermKeyHandler: ((e: KeyboardEvent) => boolean) | null = null;
+
+async function getXtermKeyHandler(): Promise<(e: KeyboardEvent) => boolean> {
+	if (xtermKeyHandler) return xtermKeyHandler;
+	const { app: config } = await loadConfig();
+	const actionMap = resolveKeybindings(config.keybind);
+	xtermKeyHandler = makeXtermKeyHandler(actionMap, dispatchAction);
+	return xtermKeyHandler;
+}
+
+function dispatchAction(action: string): void {
+	switch (action) {
+		case "new_tile":
+			createTile();
+			break;
+		case "close_tile":
+			closeFocusedTile();
+			break;
+		case "focus_prev": {
+			const id = getPrevTileId();
+			if (id) focusTile(id);
+			break;
+		}
+		case "focus_next": {
+			const id = getNextTileId();
+			if (id) focusTile(id);
+			break;
+		}
+		case "split_horizontal":
+			createTile({ splitDirection: "horizontal" });
+			break;
+		case "split_vertical":
+			createTile({ splitDirection: "vertical" });
+			break;
+	}
+}
+
+// --- Close tile ---
+
+async function closeTile(id: string): Promise<void> {
+	const tile = getTile(id);
+	if (!tile) return;
+
+	await rpc.request.closeTerminal({ id });
+	tile.terminal.dispose();
+	tile.element.remove();
+	const wasFocused = getFocusedTileId() === id;
+	removeTile(id);
+
+	if (wasFocused) {
+		const nextId = getFirstTileId();
+		setFocusedTileId(nextId);
+		if (nextId) focusTile(nextId);
+	}
+
+	updateTileCount();
+	recalculateLayout();
+	triggerSessionSave();
+}
+
+async function closeFocusedTile(): Promise<void> {
+	const id = getFocusedTileId();
+	if (id) await closeTile(id);
 }
 
 // --- Tile count display ---
@@ -143,6 +254,7 @@ interface CreateTileOpts {
 	name?: string;
 	command?: string;
 	cwd?: string;
+	color?: string;
 	splitDirection?: "horizontal" | "vertical";
 }
 
@@ -157,14 +269,20 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		createTileElement(tileName, {
 			onRename: (tileId, newName) => {
 				const t = getTile(tileId);
-				if (t) t.name = newName;
+				if (t) {
+					t.name = newName;
+					triggerSessionSave();
+				}
 			},
 			onContextMenu: (x, y, tileId) => {
 				const t = getTile(tileId);
 				if (!t) return;
 				showTileContextMenu(x, y, t.color, config.palette, {
 					onRename: triggerRename,
-					onColorChange: (color) => setTileColor(t, color),
+					onColorChange: (color) => {
+						setTileColor(t, color);
+						triggerSessionSave();
+					},
 				});
 			},
 		});
@@ -196,6 +314,10 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	term.open(body);
 	requestAnimationFrame(() => fitAddon.fit());
 
+	// Keybinding interception
+	const keyHandler = await getXtermKeyHandler();
+	term.attachCustomKeyEventHandler(keyHandler);
+
 	// PTY via RPC
 	const { id } = await rpc.request.createTerminal({
 		cols: term.cols,
@@ -222,17 +344,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	// Close
 	closeBtn.addEventListener("click", async (e) => {
 		e.stopPropagation();
-		await rpc.request.closeTerminal({ id });
-		term.dispose();
-		tileEl.remove();
-		removeTile(id);
-		if (getFocusedTileId() === id) {
-			const nextId = getFirstTileId();
-			setFocusedTileId(nextId);
-			if (nextId) focusTile(nextId);
-		}
-		updateTileCount();
-		recalculateLayout();
+		await closeTile(id);
 	});
 
 	const tile: Tile = {
@@ -240,6 +352,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		name: tileName,
 		color: defaultColor,
 		status: "running",
+		cwd: opts?.cwd || "",
 		terminal: term,
 		fitAddon,
 		element: tileEl,
@@ -250,18 +363,21 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	};
 
 	addTile(tile, insertAfterId);
-	setTileColor(tile, defaultColor);
+	setTileColor(tile, opts?.color || defaultColor);
 	statusSpan.className = `tile-status tile-status--running`;
 	statusSpan.title = STATUS_LABELS["running"];
 	focusTile(id);
 	updateTileCount();
 	recalculateLayout();
+	triggerSessionSave();
 }
 
 // --- Toolbar ---
 
 document.getElementById("btn-add")?.addEventListener("click", async () => {
-	const dir = await showDirPickerModal(rpc);
+	const focusedId = getFocusedTileId();
+	const focusedCwd = focusedId ? (getTile(focusedId)?.cwd || undefined) : undefined;
+	const dir = await showDirPickerModal(rpc, focusedCwd);
 	if (dir) {
 		await rpc.request.saveRecentDir({ dir });
 		createTile({ cwd: dir });
@@ -289,6 +405,21 @@ document.querySelectorAll(".view-btn").forEach((btn) => {
 setupResizeHandler();
 
 (async () => {
+	// Try to restore previous session
+	const { session } = await rpc.request.loadSession({});
+	if (session && session.tiles.length > 0) {
+		for (const t of session.tiles) {
+			await createTile({
+				name: t.name,
+				color: t.color,
+				cwd: t.cwd,
+				command: t.command ?? undefined,
+			});
+		}
+		return;
+	}
+
+	// No session — show directory picker for first tile
 	const dir = await showDirPickerModal(rpc);
 	if (dir) {
 		await rpc.request.saveRecentDir({ dir });

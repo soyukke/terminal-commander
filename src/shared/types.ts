@@ -7,6 +7,19 @@ export type TerminalStatus = TerminalRPCStatus | "exited";
 /** browseDirectory opens a native dialog — needs a long timeout */
 export const RPC_MAX_REQUEST_TIME = 300_000;
 
+export interface SessionTile {
+	name: string;
+	color: string;
+	cwd: string;
+	command: string | null;
+}
+
+export interface SessionData {
+	version: number;
+	savedAt: string;
+	tiles: SessionTile[];
+}
+
 export type TerminalRPCType = {
 	bun: RPCSchema<{
 		requests: {
@@ -34,6 +47,14 @@ export type TerminalRPCType = {
 				params: { dir: string };
 				response: { success: boolean };
 			};
+			saveSession: {
+				params: { tiles: SessionTile[] };
+				response: { success: boolean };
+			};
+			loadSession: {
+				params: {};
+				response: { session: SessionData | null };
+			};
 		};
 		messages: {
 			writeToTerminal: { id: string; data: string };
@@ -41,13 +62,23 @@ export type TerminalRPCType = {
 		};
 	}>;
 	webview: RPCSchema<{
-		requests: {};
+		requests: {
+			inspectorCreateTile: {
+				params: { command?: string; cwd?: string };
+				response: { id: string };
+			};
+			inspectorCloseTile: {
+				params: { terminalId: string };
+				response: { success: boolean };
+			};
+		};
 		messages: {
 			terminalOutput: { id: string; data: string };
 			terminalTitle: { id: string; title: string };
 			terminalBell: { id: string };
 			terminalExit: { id: string; exitCode: number };
 			terminalStatus: { id: string; status: TerminalRPCStatus };
+			terminalCwd: { id: string; cwd: string };
 		};
 	}>;
 };

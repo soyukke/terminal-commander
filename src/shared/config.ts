@@ -38,6 +38,9 @@ export interface AppConfig {
 
 	// Keybindings
 	keybind: Record<string, string>;
+
+	// Inspector (E2E testing)
+	"inspector-port": number;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -97,6 +100,9 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 	// Keybindings
 	keybind: {},
+
+	// Inspector (E2E testing) — 0 = disabled
+	"inspector-port": 0,
 };
 
 /**

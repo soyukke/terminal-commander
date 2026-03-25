@@ -6,7 +6,9 @@
 		"start": "electrobun dev",
 		"dev": "electrobun dev --watch",
 		"test": "bun test src/",
-		"test:smoke": "bash scripts/smoke-test.sh"
+		"test:smoke": "bash scripts/smoke-test.sh",
+		"start:inspect": "TC_INSPECTOR_PORT=9274 electrobun dev",
+		"test:e2e": "python src/e2e/test_app.py"
 	},
 	"dependencies": {
 		"electrobun": "1.16.0"

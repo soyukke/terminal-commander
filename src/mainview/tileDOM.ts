@@ -1,6 +1,7 @@
 export interface TileCallbacks {
 	onRename?: (tileId: string, newName: string) => void;
 	onContextMenu?: (x: number, y: number, tileId: string) => void;
+	onCwdClick?: (tileId: string) => void;
 }
 
 export function createTileElement(
@@ -11,6 +12,7 @@ export function createTileElement(
 	body: HTMLElement;
 	closeBtn: HTMLElement;
 	nameSpan: HTMLElement;
+	cwdSpan: HTMLElement;
 	badgeSpan: HTMLElement;
 	colorDot: HTMLElement;
 	statusSpan: HTMLElement;
@@ -65,6 +67,14 @@ export function createTileElement(
 		input.select();
 	}
 
+	const cwdSpan = document.createElement("span");
+	cwdSpan.className = "tile-cwd";
+	cwdSpan.addEventListener("click", (e) => {
+		e.stopPropagation();
+		const tileId = tileEl.dataset.tileId;
+		if (tileId && callbacks?.onCwdClick) callbacks.onCwdClick(tileId);
+	});
+
 	// Right-click context menu
 	header.addEventListener("contextmenu", (e) => {
 		e.preventDefault();
@@ -88,6 +98,7 @@ export function createTileElement(
 
 	header.appendChild(colorDot);
 	header.appendChild(nameSpan);
+	header.appendChild(cwdSpan);
 	header.appendChild(statusSpan);
 	header.appendChild(badgeSpan);
 	header.appendChild(closeBtn);
@@ -98,5 +109,5 @@ export function createTileElement(
 	tileEl.appendChild(header);
 	tileEl.appendChild(body);
 
-	return { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, statusSpan, triggerRename };
+	return { tileEl, body, closeBtn, nameSpan, cwdSpan, badgeSpan, colorDot, statusSpan, triggerRename };
 }

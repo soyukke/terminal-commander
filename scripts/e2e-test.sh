@@ -49,8 +49,12 @@ done
 
 echo "==> Inspector ready. Running E2E tests..."
 
+# Extract actual inspector port from log
+INSPECTOR_PORT=$(grep -o '\[Inspector\] listening on 127.0.0.1:[0-9]*' "$LOG" | grep -o '[0-9]*$')
+echo "==> Inspector port: $INSPECTOR_PORT"
+
 # Run tests (no external dependencies — pure socket client)
-python3 "$APP_DIR/src/e2e/test_app.py"
+python3 "$APP_DIR/src/e2e/test_app.py" "$INSPECTOR_PORT"
 TEST_EXIT=$?
 
 if [ $TEST_EXIT -eq 0 ]; then

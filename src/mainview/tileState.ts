@@ -10,6 +10,7 @@ export interface Tile {
 	fitAddon: any;
 	element: HTMLElement;
 	nameSpan: HTMLElement;
+	cwdSpan: HTMLElement;
 	badgeSpan: HTMLElement;
 	colorDot: HTMLElement;
 	statusSpan: HTMLElement;

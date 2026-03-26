@@ -23,9 +23,28 @@ import { showTileContextMenu } from "./contextMenu.ts";
 import { showDirPickerModal } from "./dirPickerModal.ts";
 import { resolveKeybindings, makeXtermKeyHandler, matchesEvent, type NormalizedCombo } from "./keybindings.ts";
 import { toggleSettingsModal } from "./settingsModal.ts";
+import { shortenPath } from "../shared/pathUtils.ts";
 
 declare const Terminal: any;
 declare const FitAddon: any;
+
+function setCwdDisplay(span: HTMLElement, cwd: string): void {
+	span.textContent = shortenPath(cwd);
+	span.title = cwd;
+}
+
+function getFocusedCwd(): string | undefined {
+	const focusedId = getFocusedTileId();
+	return focusedId ? (getTile(focusedId)?.cwd || undefined) : undefined;
+}
+
+async function openDirPickerAndCreateTile(cwd?: string): Promise<void> {
+	const dir = await showDirPickerModal(rpc, cwd);
+	if (dir) {
+		await rpc.request.saveRecentDir({ dir });
+		await createTile({ cwd: dir });
+	}
+}
 
 // --- RPC ---
 
@@ -82,8 +101,9 @@ const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
 			},
 			terminalCwd: ({ id, cwd }) => {
 				const tile = getTile(id);
-				if (tile) {
+				if (tile && tile.cwd !== cwd) {
 					tile.cwd = cwd;
+					setCwdDisplay(tile.cwdSpan, cwd);
 					triggerSessionSave();
 				}
 			},
@@ -164,7 +184,7 @@ async function getXtermKeyHandler(): Promise<(e: KeyboardEvent) => boolean> {
 function dispatchAction(action: string): void {
 	switch (action) {
 		case "new_tile":
-			createTile();
+			createTile({ cwd: getFocusedCwd() });
 			break;
 		case "close_tile":
 			closeFocusedTile();
@@ -303,7 +323,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	const command = opts?.command ?? config.command;
 	const defaultColor = config.palette[4] || "#7aa2f7";
 
-	const { tileEl, body, closeBtn, nameSpan, badgeSpan, colorDot, statusSpan, triggerRename } =
+	const { tileEl, body, closeBtn, nameSpan, cwdSpan, badgeSpan, colorDot, statusSpan, triggerRename } =
 		createTileElement(tileName, {
 			onRename: (tileId, newName) => {
 				const t = getTile(tileId);
@@ -322,6 +342,10 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 						triggerSessionSave();
 					},
 				});
+			},
+			onCwdClick: async (tileId) => {
+				const t = getTile(tileId);
+				await openDirPickerAndCreateTile(t?.cwd || undefined);
 			},
 		});
 
@@ -438,6 +462,10 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		await closeTile(id);
 	});
 
+	if (opts?.cwd) {
+		setCwdDisplay(cwdSpan, opts.cwd);
+	}
+
 	const tile: Tile = {
 		id,
 		name: tileName,
@@ -448,6 +476,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 		fitAddon,
 		element: tileEl,
 		nameSpan,
+		cwdSpan,
 		badgeSpan,
 		colorDot,
 		statusSpan,
@@ -465,15 +494,9 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 
 // --- Toolbar ---
 
-document.getElementById("btn-add")?.addEventListener("click", async () => {
-	const focusedId = getFocusedTileId();
-	const focusedCwd = focusedId ? (getTile(focusedId)?.cwd || undefined) : undefined;
-	const dir = await showDirPickerModal(rpc, focusedCwd);
-	if (dir) {
-		await rpc.request.saveRecentDir({ dir });
-		createTile({ cwd: dir });
-	}
-});
+document.getElementById("btn-add")?.addEventListener("click", () =>
+	openDirPickerAndCreateTile(getFocusedCwd())
+);
 document.getElementById("btn-split-h")?.addEventListener("click", () =>
 	createTile({ splitDirection: "horizontal" })
 );

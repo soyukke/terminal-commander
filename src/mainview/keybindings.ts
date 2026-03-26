@@ -19,7 +19,7 @@ export type ActionName =
  * Default keybindings: combo → action (matches config file format).
  */
 export const DEFAULT_KEYBINDS: Record<string, ActionName> = {
-	"ctrl+shift+t": "new_tile",
+	"meta+t": "new_tile",
 	"ctrl+shift+w": "close_tile",
 	"ctrl+shift+arrowleft": "focus_prev",
 	"ctrl+shift+arrowright": "focus_next",

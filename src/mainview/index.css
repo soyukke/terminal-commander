@@ -146,6 +146,23 @@ body {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+.tile-cwd {
+	font-size: 10px;
+	color: var(--text-secondary);
+	margin-left: 8px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	cursor: pointer;
+	flex-shrink: 1;
+	min-width: 0;
+}
+
+.tile-cwd:hover {
+	color: var(--accent);
 }
 
 /* Status indicator */

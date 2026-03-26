@@ -60,32 +60,47 @@ export class InspectorServer {
 	private server: TCPSocketListener<ClientState> | null = null;
 	private nextEid = 0;
 	private _ready = false;
+	private _port = 0;
 
 	// ---- Lifecycle ----
 
-	start(port = DEFAULT_PORT): void {
+	start(port = DEFAULT_PORT, maxRetries = 10): void {
 		const self = this;
-		this.server = Bun.listen<ClientState>({
-			hostname: "127.0.0.1",
-			port,
-			socket: {
-				open(socket) {
-					const state: ClientState = { buffer: "", subscriptions: [] };
-					socket.data = state;
-					self.clients.set(socket, state);
-				},
-				data(socket, data) {
-					self.onData(socket, data);
-				},
-				close(socket) {
-					self.clients.delete(socket);
-				},
-				error(_socket, err) {
-					console.error("[Inspector] socket error:", err);
-				},
-			},
-		});
-		console.log(`[Inspector] listening on 127.0.0.1:${port}`);
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			const tryPort = port + attempt;
+			try {
+				this.server = Bun.listen<ClientState>({
+					hostname: "127.0.0.1",
+					port: tryPort,
+					socket: {
+						open(socket) {
+							const state: ClientState = { buffer: "", subscriptions: [] };
+							socket.data = state;
+							self.clients.set(socket, state);
+						},
+						data(socket, data) {
+							self.onData(socket, data);
+						},
+						close(socket) {
+							self.clients.delete(socket);
+						},
+						error(_socket, err) {
+							console.error("[Inspector] socket error:", err);
+						},
+					},
+				});
+				this._port = tryPort;
+				console.log(`[Inspector] listening on 127.0.0.1:${tryPort}`);
+				return;
+			} catch (e: any) {
+				if (e?.code !== "EADDRINUSE" || attempt >= maxRetries) throw e;
+				console.log(`Port ${tryPort} in use, trying next port...`);
+			}
+		}
+	}
+
+	get port(): number {
+		return this._port;
 	}
 
 	stop(): void {

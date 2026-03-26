@@ -16,7 +16,7 @@ import time
 import sys
 import base64
 
-PORT = 9274
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 9274
 
 
 # ================================================================
@@ -201,6 +201,59 @@ def test_subscribe_element_added():
         listener.unsubscribe("element_added")
 
 
+def test_tile_cwd_property():
+    """タイルの cwd プロパティが OSC 7 で更新されること。"""
+    with InspectorClient() as c:
+        c.wait_until_ready()
+
+        # Create a bash tile
+        resp = c.send("create_tile", cols=80, rows=24, command="/bin/bash")
+        tid = resp["terminal_id"]
+        time.sleep(1)
+
+        # Send OSC 7 sequence directly (bash may not emit it by default)
+        osc7 = r'printf "\033]7;file:///tmp\033\\"' + "\n"
+        c.send("write_to_terminal", terminal_id=tid, data=osc7)
+        time.sleep(2)
+
+        # Check cwd property via find
+        resp = c.send("find_all", role="custom")
+        tile = None
+        for t in resp.get("elements", []):
+            if t.get("terminal_id") == tid:
+                tile = t
+                break
+        assert tile is not None, f"Tile {tid} not found"
+        assert "cwd" in tile, f"Missing cwd property in {tile}"
+        # cwd should contain /tmp (or /private/tmp on macOS)
+        assert "/tmp" in tile["cwd"], f"Expected /tmp in cwd, got {tile['cwd']}"
+
+        # Cleanup
+        c.send("close_tile", terminal_id=tid)
+
+
+def test_create_tile_with_cwd():
+    """cwd を指定してタイルを作成できること。"""
+    with InspectorClient() as c:
+        c.wait_until_ready()
+
+        resp = c.send("create_tile", cols=80, rows=24, cwd="/tmp", command="/bin/bash")
+        tid = resp["terminal_id"]
+        time.sleep(1)
+
+        # Verify the tile's cwd via pwd
+        c.send("write_to_terminal", terminal_id=tid, data="pwd\n")
+        time.sleep(1)
+
+        resp = c.send("get_terminal_output", terminal_id=tid)
+        output = resp.get("text", "")
+        # On macOS /tmp -> /private/tmp, so check both
+        assert "/tmp" in output, f"Expected /tmp in output, got {output}"
+
+        # Cleanup
+        c.send("close_tile", terminal_id=tid)
+
+
 def test_screenshot():
     """スクリーンショットを取得できること (要スクリーンキャプチャ権限)。"""
     with InspectorClient(timeout=60) as c:
@@ -231,6 +284,8 @@ if __name__ == "__main__":
         test_write_and_read_output,
         test_create_and_close_tile,
         test_subscribe_element_added,
+        test_tile_cwd_property,
+        test_create_tile_with_cwd,
         test_screenshot,
     ]
 

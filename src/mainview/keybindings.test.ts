@@ -107,7 +107,7 @@ describe("makeXtermKeyHandler", () => {
 
 	test("dispatches matching action and blocks xterm", () => {
 		const { handler, dispatched } = setup();
-		expect(handler(fakeEvent({ key: "T", ctrlKey: true, shiftKey: true }))).toBe(false);
+		expect(handler(fakeEvent({ key: "t", metaKey: true }))).toBe(false);
 		expect(dispatched).toEqual(["new_tile"]);
 	});
 

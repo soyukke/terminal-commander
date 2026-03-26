@@ -102,7 +102,7 @@ function saveSessionFile(tiles: SessionTile[]): void {
 // --- Inspector (playheavy E2E テスト用) ---
 
 const inspector = new InspectorServer();
-const inspectorPort = config["inspector-port"] || 0;
+const inspectorPort = parseInt(process.env.TC_INSPECTOR_PORT || "0", 10) || config["inspector-port"] || 0;
 if (inspectorPort > 0) {
 	inspector.start(inspectorPort);
 }

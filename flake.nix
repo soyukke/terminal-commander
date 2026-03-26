@@ -26,6 +26,9 @@
             ];
             shellHook = ''
               export PATH="$PWD/node_modules/.bin:$PATH"
+              if [ ! -d node_modules ]; then
+                bun install
+              fi
             '';
           };
         }

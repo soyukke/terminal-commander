@@ -46,6 +46,39 @@ async function openDirPickerAndCreateTile(cwd?: string): Promise<void> {
 	}
 }
 
+/**
+ * Change an existing tile's working directory by closing the old PTY
+ * and creating a new one in the selected directory, preserving tile
+ * position, name, and color.
+ */
+async function changeTileCwd(tileId: string): Promise<void> {
+	const tile = getTile(tileId);
+	if (!tile) return;
+
+	const dir = await showDirPickerModal(rpc, tile.cwd || undefined);
+	if (!dir) return;
+
+	await rpc.request.saveRecentDir({ dir });
+
+	// Save tile metadata before closing
+	const savedName = tile.name;
+	const savedColor = tile.color;
+	const order = getTileOrder();
+	const idx = order.indexOf(tileId);
+	const insertAfterId = idx > 0 ? order[idx - 1] : undefined;
+
+	// Close the old tile
+	await closeTile(tileId);
+
+	// Create a new tile with the same properties in the same position
+	await createTile({
+		name: savedName,
+		color: savedColor,
+		cwd: dir,
+		insertAfterId,
+	});
+}
+
 // --- RPC ---
 
 const rpcHandler = Electroview.defineRPC<TerminalRPCType>({
@@ -314,6 +347,7 @@ interface CreateTileOpts {
 	cwd?: string;
 	color?: string;
 	splitDirection?: "horizontal" | "vertical";
+	insertAfterId?: string;
 }
 
 async function createTile(opts?: CreateTileOpts): Promise<void> {
@@ -344,27 +378,28 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 				});
 			},
 			onCwdClick: async (tileId) => {
-				const t = getTile(tileId);
-				await openDirPickerAndCreateTile(t?.cwd || undefined);
+				await changeTileCwd(tileId);
 			},
 		});
 
 	// Determine insertion position
 	const focusedId = getFocusedTileId();
-	let insertAfterId: string | undefined;
+	let insertAfterId: string | undefined = opts?.insertAfterId;
 
-	if (focusedId && opts?.splitDirection) {
-		const order = getTileOrder();
-		const insertIdx = getSplitInsertIndex(
-			focusedId,
-			opts.splitDirection,
-			order,
-			container.clientWidth || DEFAULT_CONFIG["window-width"],
-			container.clientHeight || DEFAULT_CONFIG["window-height"],
-		);
-		insertAfterId = order[insertIdx];
-	} else if (focusedId) {
-		insertAfterId = focusedId;
+	if (!insertAfterId) {
+		if (focusedId && opts?.splitDirection) {
+			const order = getTileOrder();
+			const insertIdx = getSplitInsertIndex(
+				focusedId,
+				opts.splitDirection,
+				order,
+				container.clientWidth || DEFAULT_CONFIG["window-width"],
+				container.clientHeight || DEFAULT_CONFIG["window-height"],
+			);
+			insertAfterId = order[insertIdx];
+		} else if (focusedId) {
+			insertAfterId = focusedId;
+		}
 	}
 
 	container.appendChild(tileEl);

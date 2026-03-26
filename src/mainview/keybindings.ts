@@ -117,6 +117,9 @@ export function makeXtermKeyHandler(
 		// Only handle keydown, not keyup
 		if (e.type !== "keydown") return true;
 
+		// Let xterm.js handle IME composition events natively
+		if (e.isComposing || e.keyCode === 229) return true;
+
 		for (const [action, combo] of actionMap) {
 			if (matchesEvent(combo, e)) {
 				dispatch(action);

@@ -1,4 +1,5 @@
 import { parsePtyOutput } from "./ptyParser.ts";
+import { debugLog } from "./debugLog.ts";
 
 type OnOutput = (id: string, data: string) => void;
 type OnExit = (id: string, exitCode: number) => void;
@@ -50,7 +51,10 @@ export class PtyManager {
 			process.env.SHELL ||
 			(process.platform === "win32" ? "cmd.exe" : "/bin/bash");
 
-		const args = opts?.command ? [shell, "-c", opts.command] : [shell];
+		// Use login shell (-l) so .zprofile/.zshrc/direnv/nix are loaded
+		const args = opts?.command
+			? [shell, "-l", "-c", opts.command]
+			: [shell, "-l"];
 
 		// Register session before spawn so data callbacks can find it
 		const session: PtySession = { proc: null, outputBuffer: "" };
@@ -64,7 +68,7 @@ export class PtyManager {
 				data: (_term, data) => {
 					const text =
 						typeof data === "string" ? data : decoder.decode(data);
-
+					debugLog("PTY_OUTPUT", text);
 					const parsed = parsePtyOutput(text);
 					if (parsed.title !== undefined && this.onTitle) {
 						this.onTitle(id, parsed.title);
@@ -117,6 +121,7 @@ export class PtyManager {
 	write(id: string, data: string): boolean {
 		const session = this.sessions.get(id);
 		if (!session?.proc) return false;
+		debugLog("PTY_WRITE", data);
 		session.proc.terminal?.write(data);
 		return true;
 	}

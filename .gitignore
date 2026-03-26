@@ -17,5 +17,8 @@ build/
 # Electrobun
 .electrobun/
 
+# Debug logs
+logs/
+
 # OS
 .DS_Store

@@ -328,8 +328,34 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 
 	tileEl.dataset.tileId = id;
 
+	// Track compositionend timing for IME dedup
+	const textarea = (term as any).textarea as HTMLTextAreaElement | undefined;
+	let lastCompositionEndTime = 0;
+	if (textarea) {
+		textarea.addEventListener("compositionend", () => {
+			lastCompositionEndTime = performance.now();
+		});
+	}
+
+	// IME deduplication: Electrobun's WebView fires duplicate onData for
+	// the same composed text (60–130ms apart). Detect and skip the duplicate.
+	let lastOnDataText: string | null = null;
+	let lastOnDataTime = 0;
+
 	// Input → PTY (fire-and-forget)
 	term.onData((data: string) => {
+		const now = performance.now();
+		const isPostComposition = (now - lastCompositionEndTime) < 300;
+		rpc.send.debugLog({ tag: "ON_DATA", data: `len=${data.length} text=${JSON.stringify(data)} dt=${(now - lastOnDataTime).toFixed(0)}ms postComp=${isPostComposition}` });
+		// Skip duplicate IME input: same string within 150ms
+		// Multi-char: always dedup. Single-char: only dedup right after compositionend.
+		if ((data.length > 1 || isPostComposition) && data === lastOnDataText && (now - lastOnDataTime) < 150) {
+			rpc.send.debugLog({ tag: "ON_DATA_SKIP", data: `duplicate blocked: ${JSON.stringify(data)}` });
+			lastOnDataText = null; // reset so a third won't be blocked
+			return;
+		}
+		lastOnDataText = data;
+		lastOnDataTime = now;
 		rpc.send.writeToTerminal({ id, data });
 	});
 

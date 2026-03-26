@@ -59,6 +59,7 @@ export type TerminalRPCType = {
 		messages: {
 			writeToTerminal: { id: string; data: string };
 			resizeTerminal: { id: string; cols: number; rows: number };
+			debugLog: { tag: string; data: string };
 		};
 	}>;
 	webview: RPCSchema<{

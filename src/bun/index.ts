@@ -7,6 +7,7 @@ import {
 	type AppConfig,
 } from "../shared/config.ts";
 import { PtyManager } from "./ptyManager.ts";
+import { debugLog } from "./debugLog.ts";
 import { InspectorServer } from "./inspector.ts";
 import { join } from "path";
 import { homedir } from "os";
@@ -305,6 +306,9 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 			},
 			resizeTerminal: ({ id, cols, rows }) => {
 				ptyManager.resize(id, cols, rows);
+			},
+			debugLog: ({ tag, data }) => {
+				debugLog(tag, data);
 			},
 		},
 	},

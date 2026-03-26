@@ -33,3 +33,10 @@ install: build
     @rm -rf "/Applications/Terminal Commander.app"
     cp -R "build/dev-macos-arm64/Terminal Commander-dev.app" "/Applications/Terminal Commander.app"
     @echo "Installed to /Applications/Terminal Commander.app"
+
+# Install MCP server for Claude Code (user scope)
+install-mcp:
+    bun build src/mcp/server.ts --outfile dist/mcp-server.js --target node
+    -claude mcp remove terminal-commander -s user
+    claude mcp add -s user terminal-commander -- bun run {{justfile_directory()}}/dist/mcp-server.js
+    @echo "MCP server installed. Restart Claude Code to activate."

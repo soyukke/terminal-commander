@@ -12,7 +12,8 @@ export type ActionName =
 	| "focus_prev"
 	| "focus_next"
 	| "split_horizontal"
-	| "split_vertical";
+	| "split_vertical"
+	| "open_settings";
 
 /**
  * Default keybindings: combo → action (matches config file format).
@@ -24,6 +25,7 @@ export const DEFAULT_KEYBINDS: Record<string, ActionName> = {
 	"ctrl+shift+arrowright": "focus_next",
 	"ctrl+shift+h": "split_horizontal",
 	"ctrl+shift+v": "split_vertical",
+	"meta+.": "open_settings",
 };
 
 const MODIFIERS = new Set(["ctrl", "shift", "alt", "meta"]);

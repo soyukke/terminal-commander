@@ -19,16 +19,49 @@ let fitScheduled = false;
 export function fitAllTiles(): void {
 	if (fitScheduled) return;
 	fitScheduled = true;
+	// Double-RAF: first RAF lets CSS Grid settle, second RAF runs fit
 	requestAnimationFrame(() => {
-		fitScheduled = false;
-		for (const tile of allTiles()) {
-			try {
-				tile.fitAddon.fit();
-			} catch {
-				// ignore fit errors during layout transition
+		requestAnimationFrame(() => {
+			fitScheduled = false;
+			for (const tile of allTiles()) {
+				try {
+					tile.fitAddon.fit();
+				} catch {
+					// ignore fit errors during layout transition
+				}
 			}
-		}
+		});
 	});
+}
+
+/** Fit a single tile's terminal to its container */
+function fitTile(tileId: string): void {
+	const tile = getTile(tileId);
+	if (!tile) return;
+	try {
+		tile.fitAddon.fit();
+	} catch {
+		// ignore fit errors during layout transition
+	}
+}
+
+// Per-tile ResizeObserver: watches each tile-body for size changes
+const tileResizeObserver = new ResizeObserver((entries) => {
+	for (const entry of entries) {
+		const tileId = (entry.target as HTMLElement).dataset.tileId;
+		if (tileId) fitTile(tileId);
+	}
+});
+
+/** Start observing a tile-body element for resize. Call when creating a tile. */
+export function observeTileResize(tileBody: HTMLElement, tileId: string): void {
+	tileBody.dataset.tileId = tileId;
+	tileResizeObserver.observe(tileBody);
+}
+
+/** Stop observing a tile-body element. Call when closing a tile. */
+export function unobserveTileResize(tileBody: HTMLElement): void {
+	tileResizeObserver.unobserve(tileBody);
 }
 
 export function recalculateLayout(): void {
@@ -66,6 +99,6 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 export function setupResizeHandler(): void {
 	window.addEventListener("resize", () => {
 		if (resizeTimer) clearTimeout(resizeTimer);
-		resizeTimer = setTimeout(fitAllTiles, 150);
+		resizeTimer = setTimeout(fitAllTiles, 100);
 	});
 }

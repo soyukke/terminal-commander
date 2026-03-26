@@ -4,6 +4,7 @@ import {
 	DEFAULT_CONFIG,
 	parseConfigFile,
 	resolveConfig,
+	serializeConfig,
 	type AppConfig,
 } from "../shared/config.ts";
 import { PtyManager } from "./ptyManager.ts";
@@ -36,7 +37,7 @@ function loadConfig(): AppConfig {
 	return DEFAULT_CONFIG;
 }
 
-const config = loadConfig();
+let config = loadConfig();
 
 // --- Recent directories ---
 
@@ -298,6 +299,21 @@ const terminalRPC = BrowserView.defineRPC<TerminalRPCType>({
 
 			loadSession: () => {
 				return { session: loadSessionFile() };
+			},
+
+			saveConfig: ({ config: newConfig }) => {
+				config = { ...config, ...newConfig };
+				const configPath = join(homedir(), ".config", "terminal-commander", "config");
+				const configDir = join(homedir(), ".config", "terminal-commander");
+				try {
+					mkdirSync(configDir, { recursive: true });
+				} catch { /* already exists */ }
+				try {
+					writeFileSync(configPath, serializeConfig(config));
+					return { success: true };
+				} catch {
+					return { success: false };
+				}
 			},
 		},
 		messages: {

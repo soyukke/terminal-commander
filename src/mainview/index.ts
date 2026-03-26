@@ -16,12 +16,13 @@ import {
 	getNextTileId,
 	allTiles,
 } from "./tileState.ts";
-import { recalculateLayout, getContainer, setupResizeHandler } from "./layout.ts";
+import { recalculateLayout, getContainer, setupResizeHandler, observeTileResize, unobserveTileResize } from "./layout.ts";
 import { getSplitInsertIndex } from "../shared/gridCalc.ts";
 import { createTileElement } from "./tileDOM.ts";
 import { showTileContextMenu } from "./contextMenu.ts";
 import { showDirPickerModal } from "./dirPickerModal.ts";
-import { resolveKeybindings, makeXtermKeyHandler } from "./keybindings.ts";
+import { resolveKeybindings, makeXtermKeyHandler, matchesEvent, type NormalizedCombo } from "./keybindings.ts";
+import { toggleSettingsModal } from "./settingsModal.ts";
 
 declare const Terminal: any;
 declare const FitAddon: any;
@@ -112,6 +113,22 @@ async function loadConfig() {
 	return cachedConfig;
 }
 
+// --- Apply config changes (for settings preview and save) ---
+
+function applyConfig(newApp: AppConfig): void {
+	const newTermOpts = configToTerminalOptions(newApp);
+	cachedConfig = { app: newApp, terminal: newTermOpts };
+
+	// Update CSS variables
+	document.documentElement.style.setProperty("--bg-primary", newApp.background);
+	document.documentElement.style.setProperty("--text-primary", newApp.foreground);
+
+	// Update all existing xterm.js instances
+	for (const tile of allTiles()) {
+		tile.terminal.options = newTermOpts;
+	}
+}
+
 // --- Session auto-save (debounced) ---
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -134,12 +151,13 @@ function triggerSessionSave(): void {
 // --- Keybinding setup ---
 
 let xtermKeyHandler: ((e: KeyboardEvent) => boolean) | null = null;
+let resolvedActionMap: Map<string, NormalizedCombo> | null = null;
 
 async function getXtermKeyHandler(): Promise<(e: KeyboardEvent) => boolean> {
 	if (xtermKeyHandler) return xtermKeyHandler;
 	const { app: config } = await loadConfig();
-	const actionMap = resolveKeybindings(config.keybind);
-	xtermKeyHandler = makeXtermKeyHandler(actionMap, dispatchAction);
+	resolvedActionMap = resolveKeybindings(config.keybind);
+	xtermKeyHandler = makeXtermKeyHandler(resolvedActionMap, dispatchAction);
 	return xtermKeyHandler;
 }
 
@@ -167,6 +185,22 @@ function dispatchAction(action: string): void {
 		case "split_vertical":
 			createTile({ splitDirection: "vertical" });
 			break;
+		case "open_settings":
+			(async () => {
+				const { app } = await loadConfig();
+				toggleSettingsModal(
+					app,
+					(config) => applyConfig(config),
+					async (config) => {
+						applyConfig(config);
+						await rpc.request.saveConfig({ config });
+						// Invalidate keybinding handler in case keybinds changed
+						xtermKeyHandler = null;
+						resolvedActionMap = null;
+					},
+				);
+			})();
+			break;
 	}
 }
 
@@ -175,6 +209,10 @@ function dispatchAction(action: string): void {
 async function closeTile(id: string): Promise<void> {
 	const tile = getTile(id);
 	if (!tile) return;
+
+	// Stop observing resize before removing
+	const tileBody = tile.element.querySelector(".tile-body") as HTMLElement | null;
+	if (tileBody) unobserveTileResize(tileBody);
 
 	await rpc.request.closeTerminal({ id });
 	tile.terminal.dispose();
@@ -315,9 +353,32 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 
 	requestAnimationFrame(() => fitAddon.fit());
 
-	// Keybinding interception
+	// Keybinding interception (with clipboard support)
 	const keyHandler = await getXtermKeyHandler();
-	term.attachCustomKeyEventHandler(keyHandler);
+	term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+		if (e.type !== "keydown") return true;
+
+		// Cmd+C: copy selection to clipboard (if selection exists)
+		if (e.metaKey && e.key === "c") {
+			const sel = term.getSelection();
+			if (sel) {
+				navigator.clipboard.writeText(sel);
+				return false;
+			}
+			// No selection → let xterm handle as normal (Ctrl+C / SIGINT)
+			return true;
+		}
+
+		// Cmd+V: paste from clipboard
+		if (e.metaKey && e.key === "v") {
+			navigator.clipboard.readText().then((text) => {
+				if (text) term.paste(text);
+			});
+			return false;
+		}
+
+		return keyHandler(e);
+	});
 
 	// PTY via RPC
 	const { id } = await rpc.request.createTerminal({
@@ -328,6 +389,9 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	});
 
 	tileEl.dataset.tileId = id;
+
+	// Observe tile-body for resize so fit() runs when CSS Grid changes tile dimensions
+	observeTileResize(body, id);
 
 	// Track compositionend timing for IME dedup
 	const textarea = (term as any).textarea as HTMLTextAreaElement | undefined;
@@ -425,6 +489,22 @@ document.querySelectorAll(".view-btn").forEach((btn) => {
 		document.querySelectorAll(".view-btn").forEach((b) => b.classList.remove("active"));
 		btn.classList.add("active");
 	});
+});
+
+// --- Global keybindings (outside xterm) ---
+
+document.addEventListener("keydown", (e) => {
+	if (e.type !== "keydown") return;
+	// Only handle when focus is outside xterm (xterm has its own key handler)
+	if (document.activeElement?.closest(".xterm")) return;
+	if (!resolvedActionMap) return;
+	for (const [action, combo] of resolvedActionMap) {
+		if (matchesEvent(combo, e)) {
+			e.preventDefault();
+			dispatchAction(action);
+			return;
+		}
+	}
 });
 
 // --- Init ---

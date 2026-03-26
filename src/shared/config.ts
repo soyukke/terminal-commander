@@ -195,6 +195,68 @@ export function resolveConfig(userConfig: Partial<AppConfig>): AppConfig {
 	return merged;
 }
 
+// --- Field metadata for settings UI ---
+
+export type FieldMeta =
+	| { type: "text"; label: string }
+	| { type: "number"; label: string; min?: number; max?: number; step?: number }
+	| { type: "boolean"; label: string }
+	| { type: "select"; label: string; options: string[] }
+	| { type: "color"; label: string };
+
+export const CONFIG_FIELD_METADATA: Partial<Record<keyof AppConfig, FieldMeta>> = {
+	"font-family": { type: "text", label: "Font Family" },
+	"font-size": { type: "number", label: "Font Size", min: 8, max: 32, step: 1 },
+	"background": { type: "color", label: "Background" },
+	"foreground": { type: "color", label: "Foreground" },
+	"cursor-color": { type: "color", label: "Cursor Color" },
+	"selection-background": { type: "color", label: "Selection Background" },
+	"cursor-style": { type: "select", label: "Cursor Style", options: ["block", "bar", "underline"] },
+	"cursor-style-blink": { type: "boolean", label: "Cursor Blink" },
+	"background-opacity": { type: "number", label: "Background Opacity", min: 0, max: 1, step: 0.05 },
+	"window-padding-x": { type: "number", label: "Horizontal Padding", min: 0, max: 32, step: 1 },
+	"window-padding-y": { type: "number", label: "Vertical Padding", min: 0, max: 32, step: 1 },
+	"command": { type: "text", label: "Default Command" },
+	"working-directory": { type: "text", label: "Working Directory" },
+	"scrollback-limit": { type: "number", label: "Scrollback Lines", min: 100, max: 100000, step: 100 },
+	"copy-on-select": { type: "boolean", label: "Copy on Select" },
+	"mouse-hide-while-typing": { type: "boolean", label: "Hide Mouse While Typing" },
+};
+
+export const CONFIG_SECTIONS: Array<{ label: string; fields: (keyof AppConfig)[] }> = [
+	{ label: "Font", fields: ["font-family", "font-size"] },
+	{ label: "Colors", fields: ["background", "foreground", "cursor-color", "selection-background", "background-opacity"] },
+	{ label: "Cursor", fields: ["cursor-style", "cursor-style-blink"] },
+	{ label: "Window", fields: ["window-padding-x", "window-padding-y"] },
+	{ label: "Shell", fields: ["command", "working-directory"] },
+	{ label: "Behavior", fields: ["scrollback-limit", "copy-on-select", "mouse-hide-while-typing"] },
+];
+
+// --- Serialize config to Ghostty INI format ---
+
+export function serializeConfig(config: AppConfig): string {
+	const lines: string[] = [];
+	for (const key of Object.keys(DEFAULT_CONFIG) as (keyof AppConfig)[]) {
+		if (key === "env" || key === "palette" || key === "keybind") continue;
+		const val = config[key];
+		if (typeof val === "string") {
+			lines.push(`${key} = "${val}"`);
+		} else {
+			lines.push(`${key} = ${val}`);
+		}
+	}
+	for (const [idx, color] of Object.entries(config.palette)) {
+		lines.push(`palette = ${idx}=${color}`);
+	}
+	for (const [k, v] of Object.entries(config.env)) {
+		lines.push(`env = ${k}=${v}`);
+	}
+	for (const [combo, action] of Object.entries(config.keybind)) {
+		lines.push(`keybind = ${combo}=${action}`);
+	}
+	return lines.join("\n") + "\n";
+}
+
 /**
  * Convert AppConfig to xterm.js Terminal options.
  */

@@ -55,6 +55,10 @@ export type TerminalRPCType = {
 				params: {};
 				response: { session: SessionData | null };
 			};
+			saveConfig: {
+				params: { config: Partial<AppConfig> };
+				response: { success: boolean };
+			};
 		};
 		messages: {
 			writeToTerminal: { id: string; data: string };

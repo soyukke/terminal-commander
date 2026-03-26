@@ -312,6 +312,7 @@ async function createTile(opts?: CreateTileOpts): Promise<void> {
 	const fitAddon = new FitAddon.FitAddon();
 	term.loadAddon(fitAddon);
 	term.open(body);
+
 	requestAnimationFrame(() => fitAddon.fit());
 
 	// Keybinding interception

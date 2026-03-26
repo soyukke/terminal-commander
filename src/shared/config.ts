@@ -45,7 +45,7 @@ export interface AppConfig {
 
 export const DEFAULT_CONFIG: AppConfig = {
 	// Font
-	"font-family": '"MesloLGS NF", Menlo, Monaco, "Courier New", monospace',
+	"font-family": '"CaskaydiaCove Nerd Font Mono", Menlo, "Hiragino Kaku Gothic ProN", "Hiragino Sans", monospace',
 	"font-size": 13,
 
 	// Theme & Colors
@@ -164,7 +164,13 @@ export function parseConfigFile(content: string): Partial<AppConfig> {
 		} else if (NUMBER_RE.test(value)) {
 			config[key] = parseFloat(value);
 		} else {
-			config[key] = value;
+			// Strip surrounding quotes (single or double)
+			const unquoted = value.length >= 2
+				&& ((value[0] === '"' && value[value.length - 1] === '"')
+					|| (value[0] === "'" && value[value.length - 1] === "'"))
+				? value.slice(1, -1)
+				: value;
+			config[key] = unquoted;
 		}
 	}
 
